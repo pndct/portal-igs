@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sistem Presensi IGS - Liquid Edition</title>
+
+    <!-- Tailwind Play CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Google Fonts: Plus Jakarta Sans (iOS Style) -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Plus Jakarta Sans"', "ui-sans-serif", "system-ui"],
+            },
+            borderRadius: {
+              "4xl": "2rem",
+              "5xl": "3rem",
+            },
+          },
+        },
+      };
+    </script>
+
+    <style type="text/css">
+      /* Hide scrollbar for cleaner iOS look */
+      ::-webkit-scrollbar {
+        width: 4px;
+      }
+      ::-webkit-scrollbar-track {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #ddd6fe;
+        border-radius: 10px;
+      }
+
+      body {
+        background-color: #fdfcfe;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        overflow-x: hidden;
+      }
+
+      /* Backdrop filter fix for some browsers */
+      .backdrop-blur-xl {
+        -webkit-backdrop-filter: blur(24px);
+        backdrop-filter: blur(24px);
+      }
+
+      /* Smooth page transition */
+      .animate-in {
+        animation: fadeIn 0.6s ease-out;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
