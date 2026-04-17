@@ -45,7 +45,7 @@ import {
 
 // --- KONFIGURASI FIREBASE ---
 const firebaseConfig = {
-  apiKey: "AIzaSyDBHdt-fdToMgbZhsWo0N0XB7sY05qsbAY",
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
   authDomain: "igsattendance-65ada.firebaseapp.com",
   projectId: "igsattendance-65ada",
   storageBucket: "igsattendance-65ada.firebasestorage.app",
