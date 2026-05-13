@@ -41,6 +41,7 @@ import {
   Download,
   BookOpen,
   ChevronRight,
+  Star,
 } from "lucide-react";
 
 // --- KONFIGURASI FIREBASE ---
@@ -58,57 +59,46 @@ const db = getFirestore(app);
 const appId = typeof __app_id !== "undefined" ? __app_id : "igs-portal-v1-0";
 
 const JENJANG_DATA = {
-  PAUD: [
-    "PLAYGROUP KHADIJAH",
-    "TK A SHOFIYAH",
-    "TK A AISYAH",
-    "TK B JUWAIRIYAH",
-    "TK B SHOFITYAH",
-  ],
+  PAUD: ["PLAYGROUP", "TK A1", "TK A2", "TK B1", "TK B2"],
   SD: [
     "1 AL QALAM",
-    "1 AT TAUBAH",
-    "2 AL ALAQ",
-    "2 AT THORIQ",
-    "3 AL MU'MINUN",
-    "3 AL QADR",
-    "4 AN NASHR",
-    "4 AL KAUTSAR",
-    "5 AL BALAD",
-    "5 AL FATH",
-    "6 AL BURUJ",
-    "6 AN NUR",
+    "1 AL ASHR",
+    "2 AL KAHFI",
+    "2 AL MULK",
+    "3 AL WAQIAH",
+    "3 AR RAHMAN",
+    "4 AN NABA",
+    "4 AN NAZIAH",
+    "5 ABASA",
+    "5 AT TAKWIR",
+    "6 AL INFITHAR",
+    "6 AL MUTHAFFIFIN",
   ],
   SMP: [
-    "7 ABU RAIHAN AL BIRUNI",
-    "7 ASYIFAH BINTI ABDULLAH",
-    "8 AL BATTANI",
-    "8 ZAINAB SYAHDA BINTI AHMAD",
-    "9 ABU QASIM AL-ZAHRAWI",
-    "9 FATIMAH AL-FIHRI",
+    "7 AL INSYIQAQ",
+    "7 AL BURUJ",
+    "8 ATH THARIQ",
+    "8 AL ALA",
+    "9 AL GHA SYIYAH",
+    "9 AL FAJR",
   ],
 };
 
 const KEPALA_SEKOLAH = {
-  PAUD: {
-    nama: "MUAMMAR, S.Pd",
-    jabatan: "Kepala PAUD Islamic Global Preschool",
-  },
+  PAUD: { nama: "Muammar", jabatan: "Kepala PAUD Islamic Global Preschool" },
   SD: {
-    nama: "SUKERTI, S.S., S.Pd.",
+    nama: "Sukerti, S.S., S.Pd.",
     jabatan: "Kepala SD Islamic Global School",
   },
-  SMP: {
-    nama: "IKA SUMARTI, S.Pd., M.Si.",
-    jabatan: "Kepala SMP Islamic Global School",
-  },
+  SMP: { nama: "Ika Sumarti", jabatan: "Kepala SMP Islamic Global School" },
   SYSTEM: {
-    nama: "SUKERTI, S.S., S.Pd.",
+    nama: "Sukerti, S.S., S.Pd.",
     jabatan: "Kepala SD Islamic Global School",
   },
 };
 
-const LOGO_URL = "https://i.imgur.com/dsAGVyl.png";
+const LOGO_URL =
+  "https://islamicglobalschool.sch.id/wp-content/uploads/2023/07/LOGO-IGS-PNG.png";
 const MONTHS = [
   "Januari",
   "Februari",
@@ -273,10 +263,10 @@ export default function App() {
                 </div>
                 <div>
                   <h1 className="font-black text-indigo-950 text-xs leading-none tracking-tighter uppercase">
-                    ABSENSI DIGITAL IGS
+                    IGS Portal
                   </h1>
                   <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">
-                    v1.0 beta
+                    v1.1 LIQUID EDITION
                   </p>
                 </div>
               </div>
@@ -485,26 +475,11 @@ function AuthScreen({ view, setView, showToast }) {
           </div>
           <h2 className="text-2xl font-black text-indigo-950 uppercase">
             {view === "login"
-              ? "Absensi Digital IGS"
+              ? "Selamat Datang"
               : view === "register"
               ? "Daftar Akun"
               : "Lupa Password"}
           </h2>
-          <p
-            className={`mt-2 ${
-              view === "login"
-                ? "font-poppins text-sm text-gray-500"
-                : view === "register"
-                ? "font-inter text-base text-gray-500"
-                : "font-sans text-sm text-gray-500"
-            }`}
-          >
-            {view === "login"
-              ? "Silakan login untuk melanjutkan"
-              : view === "register"
-              ? ""
-              : "Masukkan email untuk reset password"}
-          </p>
         </div>
         <form onSubmit={handleAuth} className="space-y-4">
           {view === "register" && (
@@ -563,7 +538,7 @@ function AuthScreen({ view, setView, showToast }) {
                     </select>
                   ) : (
                     <input
-                      placeholder="MAPEL (Cth: PAI)"
+                      placeholder="MAPEL (Mis: PAI)"
                       className={UI.INPUT}
                       value={form.mapel}
                       onChange={(e) =>
@@ -685,7 +660,7 @@ function AttendanceManager({ userData, showToast }) {
 
   const [students, setStudents] = useState([]);
   const [attendance, setAttendance] = useState({});
-  const [showSiaFor, setShowSiaFor] = useState(null);
+  const [overlay, setOverlay] = useState(null); // { id: studentId, type: 'LATE' | 'CROSS' | 'SCORE' }
 
   const collectionName = isBidang ? "subject_attendance" : "attendance";
   const allAvailableClasses = useMemo(
@@ -722,8 +697,9 @@ function AttendanceManager({ userData, showToast }) {
       qA,
       (s) => {
         const data = {};
+        // Simpan keseluruhan object data absensi untuk mendukung nilai & keterlambatan
         s.docs.forEach((d) => {
-          data[d.data().studentId] = d.data().status;
+          data[d.data().studentId] = d.data();
         });
         setAttendance(data);
       },
@@ -736,32 +712,31 @@ function AttendanceManager({ userData, showToast }) {
     };
   }, [date, selectedClass, userData.mapel, collectionName, isBidang]);
 
-  const setStatus = async (studentId, status) => {
+  const updateData = async (studentId, dataToMerge) => {
     const docId = isBidang
       ? `${date}_${selectedClass}_${userData.mapel}_${studentId}`
       : `${date}_${selectedClass}_${studentId}`;
     try {
-      if (status === null) {
-        await deleteDoc(doc(db, "artifacts", appId, collectionName, docId));
-      } else {
-        const payload = {
-          studentId,
-          date,
-          status,
-          className: selectedClass,
-          teacher: userData.name,
-          timestamp: new Date().getTime(),
-        };
-        if (isBidang) payload.mapel = userData.mapel;
-        await setDoc(
-          doc(db, "artifacts", appId, collectionName, docId),
-          payload
-        );
-      }
+      const payload = {
+        studentId,
+        date,
+        className: selectedClass,
+        teacher: userData.name,
+        timestamp: new Date().getTime(),
+        ...dataToMerge,
+      };
+      if (isBidang) payload.mapel = userData.mapel;
+
+      // Menggunakan merge: true agar update Nilai tidak mereset Status, dan sebaliknya
+      await setDoc(
+        doc(db, "artifacts", appId, collectionName, docId),
+        payload,
+        { merge: true }
+      );
     } catch (e) {
       console.error(e);
     }
-    setShowSiaFor(null);
+    setOverlay(null);
   };
 
   return (
@@ -816,71 +791,240 @@ function AttendanceManager({ userData, showToast }) {
             </p>
           </div>
         )}
-        {students.map((s) => (
-          <div
-            key={s.id}
-            className={`${UI.CARD} p-6 border-none flex items-center justify-between`}
-          >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-2xl">
-                {s.gender === "L" ? "👳" : "🧕"}
+        {students.map((s) => {
+          const attData = attendance[s.id] || {};
+          const stat = attData.status;
+          const score = attData.score;
+          const lateMins = attData.lateMinutes;
+
+          let statusText = "BELUM ABSEN";
+          let statusColor = "text-slate-400";
+          if (stat === "H") {
+            statusText = "HADIR";
+            statusColor = "text-emerald-600";
+          } else if (stat === "T") {
+            statusText = `TELAT (${lateMins || 0}m)`;
+            statusColor = "text-amber-500";
+          } else if (stat === "S") {
+            statusText = "SAKIT";
+            statusColor = "text-indigo-500";
+          } else if (stat === "I") {
+            statusText = "IZIN";
+            statusColor = "text-indigo-500";
+          } else if (stat === "A") {
+            statusText = "ALPA";
+            statusColor = "text-rose-600";
+          }
+
+          return (
+            <div
+              key={s.id}
+              className={`${UI.CARD} p-4 md:p-6 border-none flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4 relative overflow-visible`}
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-2xl shrink-0">
+                  {s.gender === "L" ? "👳" : "🧕"}
+                </div>
+                <div>
+                  <p className="font-black text-indigo-950 text-[10px] md:text-xs uppercase truncate max-w-[150px]">
+                    {s.name}
+                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <p
+                      className={`text-[9px] font-black uppercase tracking-wider ${statusColor}`}
+                    >
+                      {statusText}
+                    </p>
+                    {score != null && (
+                      <span className="text-[8px] font-black bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md">
+                        NILAI: {score}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
-              <div className="max-w-[150px]">
-                <p className="font-black text-indigo-950 text-[10px] uppercase truncate">
-                  {s.name}
-                </p>
-                <p
-                  className={`text-[8px] font-bold uppercase ${
-                    attendance[s.id] ? "text-indigo-600" : "text-slate-400"
-                  }`}
-                >
-                  {attendance[s.id] || "BELUM ABSEN"}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() =>
-                  setStatus(s.id, attendance[s.id] === "H" ? null : "H")
-                }
-                className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
-                  attendance[s.id] === "H"
-                    ? "bg-indigo-600 text-white shadow-lg"
-                    : "bg-slate-100 text-slate-300"
-                }`}
-              >
-                <Check size={18} />
-              </button>
-              <div className="relative">
-                <button
-                  onClick={() =>
-                    setShowSiaFor(showSiaFor === s.id ? null : s.id)
-                  }
-                  className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
-                    ["S", "I", "A"].includes(attendance[s.id])
-                      ? "bg-rose-500 text-white shadow-lg"
-                      : "bg-slate-100 text-slate-300"
-                  }`}
-                >
-                  <X size={18} />
-                </button>
-                {showSiaFor === s.id && (
-                  <div className="absolute right-0 bottom-12 bg-white shadow-2xl rounded-2xl p-2 flex gap-2 border border-slate-100 z-50 animate-in slide-in-from-bottom-2">
-                    {["S", "I", "A"].map((val) => (
-                      <button
-                        key={val}
-                        onClick={() => setStatus(s.id, val)}
-                        className="w-8 h-8 rounded-lg font-black text-[10px] bg-slate-50 text-slate-400 hover:bg-indigo-600 hover:text-white transition-all"
-                      >
-                        {val}
-                      </button>
-                    ))}
+
+              {/* 3 MODE ACTIONS */}
+              <div className="flex items-center gap-2 w-full xl:w-auto bg-slate-50/50 p-2 rounded-2xl">
+                {/* Mode 1: Checklist (H / T) */}
+                <div className="flex bg-white shadow-sm border border-slate-100 rounded-xl overflow-hidden shrink-0">
+                  <button
+                    onClick={() =>
+                      updateData(s.id, { status: "H", lateMinutes: null })
+                    }
+                    className={`w-10 h-10 flex items-center justify-center transition-all ${
+                      stat === "H"
+                        ? "bg-emerald-500 text-white"
+                        : "text-slate-300 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Check size={18} />
+                  </button>
+                  <div className="w-[1px] bg-slate-100"></div>
+                  <button
+                    onClick={() =>
+                      setOverlay(
+                        overlay?.id === s.id && overlay.type === "LATE"
+                          ? null
+                          : { id: s.id, type: "LATE" }
+                      )
+                    }
+                    className={`w-10 h-10 flex items-center justify-center font-black text-[12px] transition-all ${
+                      stat === "T"
+                        ? "bg-amber-500 text-white"
+                        : "text-slate-400 hover:bg-slate-50"
+                    }`}
+                  >
+                    T
+                  </button>
+                </div>
+
+                {/* Mode 2: Cross (S/I/A) */}
+                <div className="relative shrink-0">
+                  <button
+                    onClick={() =>
+                      setOverlay(
+                        overlay?.id === s.id && overlay.type === "CROSS"
+                          ? null
+                          : { id: s.id, type: "CROSS" }
+                      )
+                    }
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border border-slate-100 transition-all ${
+                      ["S", "I", "A"].includes(stat)
+                        ? "bg-rose-500 text-white border-rose-500"
+                        : "bg-white text-slate-300 hover:bg-slate-50"
+                    }`}
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {/* Mode 3: Nilai */}
+                <div className="relative shrink-0 ml-auto xl:ml-0">
+                  <button
+                    onClick={() =>
+                      setOverlay(
+                        overlay?.id === s.id && overlay.type === "SCORE"
+                          ? null
+                          : { id: s.id, type: "SCORE" }
+                      )
+                    }
+                    className={`h-10 px-4 rounded-xl flex items-center justify-center font-black text-[10px] shadow-sm border border-slate-100 transition-all ${
+                      score != null
+                        ? "bg-indigo-600 text-white border-indigo-600"
+                        : "bg-white text-slate-400 hover:bg-slate-50"
+                    }`}
+                  >
+                    {score != null ? score : "NILAI"}
+                  </button>
+                </div>
+
+                {/* POPUP OVERLAYS */}
+                {overlay?.id === s.id && (
+                  <div className="absolute top-full mt-2 right-4 xl:right-0 bg-white p-3 rounded-2xl shadow-2xl border border-slate-100 z-50 animate-in slide-in-from-top-2">
+                    {overlay.type === "LATE" && (
+                      <div className="flex gap-2 items-center">
+                        <Clock size={16} className="text-amber-500" />
+                        <input
+                          id={`late-${s.id}`}
+                          type="number"
+                          placeholder="Menit..."
+                          className={
+                            UI.INPUT + " w-24 p-2 text-center text-xs h-10"
+                          }
+                          defaultValue={lateMins || ""}
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => {
+                            const val = document.getElementById(
+                              `late-${s.id}`
+                            ).value;
+                            updateData(s.id, {
+                              status: "T",
+                              lateMinutes: parseInt(val) || 0,
+                            });
+                          }}
+                          className="h-10 bg-amber-500 text-white rounded-xl px-4 font-black text-[10px] uppercase"
+                        >
+                          Simpan
+                        </button>
+                      </div>
+                    )}
+                    {overlay.type === "CROSS" && (
+                      <div className="flex gap-2">
+                        {["S", "I", "A"].map((val) => (
+                          <button
+                            key={val}
+                            onClick={() =>
+                              updateData(s.id, {
+                                status: val,
+                                lateMinutes: null,
+                              })
+                            }
+                            className="w-10 h-10 rounded-xl font-black bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white transition-all"
+                          >
+                            {val}
+                          </button>
+                        ))}
+                        <div className="w-[1px] bg-slate-100 mx-1"></div>
+                        <button
+                          onClick={() =>
+                            updateData(s.id, {
+                              status: null,
+                              lateMinutes: null,
+                            })
+                          }
+                          className="w-10 h-10 rounded-xl font-black bg-slate-50 text-slate-400 hover:bg-slate-200 transition-all flex items-center justify-center"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    )}
+                    {overlay.type === "SCORE" && (
+                      <div className="flex gap-2 items-center">
+                        <Star size={16} className="text-indigo-500" />
+                        <input
+                          id={`score-${s.id}`}
+                          type="number"
+                          min="0"
+                          max="100"
+                          placeholder="0-100"
+                          className={
+                            UI.INPUT + " w-24 p-2 text-center text-xs h-10"
+                          }
+                          defaultValue={score ?? ""}
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => {
+                            const val = document.getElementById(
+                              `score-${s.id}`
+                            ).value;
+                            updateData(s.id, {
+                              score: val === "" ? null : parseInt(val),
+                            });
+                          }}
+                          className="h-10 bg-indigo-600 text-white rounded-xl px-4 font-black text-[10px] uppercase"
+                        >
+                          Simpan
+                        </button>
+                        {score != null && (
+                          <button
+                            onClick={() => updateData(s.id, { score: null })}
+                            className="h-10 bg-rose-50 text-rose-500 rounded-xl px-3 flex items-center justify-center hover:bg-rose-500 hover:text-white transition-all"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -1095,7 +1239,8 @@ function ReportPanel({ userData, showToast, libsReady }) {
 
   // State dasar
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  const [selectedTA, setSelectedTA] = useState("2025-2026");
+  const [selectedTA, setSelectedTA] = useState("2024-2025");
+  const [reportCategory, setReportCategory] = useState("attendance"); // Tambahan state kategori report
   const [isGenerating, setIsGenerating] = useState(false);
 
   // State Khusus Admin
@@ -1221,7 +1366,11 @@ function ReportPanel({ userData, showToast, libsReady }) {
         if (data.date.startsWith(datePrefix)) {
           const dayNum = parseInt(data.date.split("-")[2]);
           if (!attMap[data.studentId]) attMap[data.studentId] = {};
-          attMap[data.studentId][dayNum] = data.status;
+          attMap[data.studentId][dayNum] = {
+            status: data.status,
+            score: data.score,
+            lateMinutes: data.lateMinutes,
+          };
         }
       });
 
@@ -1264,11 +1413,13 @@ function ReportPanel({ userData, showToast, libsReady }) {
       doc.setLineWidth(0.4);
       doc.line(15, startY + 14, pageWidth - 15, startY + 14);
 
+      const reportTitle =
+        reportCategory === "score"
+          ? "DAFTAR NILAI SISWA"
+          : "DAFTAR HADIR SISWA";
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
-      doc.text("DAFTAR HADIR SISWA", pageWidth / 2, startY + 20, {
-        align: "center",
-      });
+      doc.text(reportTitle, pageWidth / 2, startY + 20, { align: "center" });
       doc.text(`TAHUN AJARAN ${selectedTA}`, pageWidth / 2, startY + 24, {
         align: "center",
       });
@@ -1285,46 +1436,106 @@ function ReportPanel({ userData, showToast, libsReady }) {
         { align: "right" }
       );
 
-      const head1 = [
-        { content: "No", rowSpan: 2 },
-        { content: "NIS", rowSpan: 2 },
-        { content: "NISN", rowSpan: 2 },
-        { content: "Nama Siswa", rowSpan: 2 },
-        { content: "Panggilan", rowSpan: 2 },
-        { content: "L/P", rowSpan: 2 },
-        { content: `Tanggal`, colSpan: daysInMonth },
-        { content: "Jumlah", colSpan: 3 },
-      ];
-      const head2 = [
-        ...Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString()),
-        "S",
-        "I",
-        "A",
-      ];
+      const formatLate = (mins) => {
+        if (!mins) return "T";
+        const m = parseInt(mins, 10);
+        if (isNaN(m)) return "T";
+        if (m >= 60) {
+          const h = Math.floor(m / 60);
+          const remaining = m % 60;
+          return remaining > 0 ? `${h}h${remaining}m` : `${h}h`;
+        }
+        return `${m}m`;
+      };
 
-      const body = studentList.map((s, idx) => {
-        const sAtt = attMap[s.id] || {};
-        const daily = Array.from({ length: daysInMonth }, (_, i) => {
-          const v = sAtt[i + 1];
-          return v === "H" ? "v" : v || "";
-        });
-        const c = { S: 0, I: 0, A: 0 };
-        Object.values(sAtt).forEach((v) => {
-          if (c[v] !== undefined) c[v]++;
-        });
-        return [
-          idx + 1,
-          s.nis || "-",
-          s.nisn || "-",
-          s.name,
-          s.nickname || "-",
-          s.gender,
-          ...daily,
-          c.S || "",
-          c.I || "",
-          c.A || "",
+      let head1, head2, body;
+
+      if (reportCategory === "score") {
+        head1 = [
+          { content: "NO", rowSpan: 2 },
+          { content: "NIS", rowSpan: 2 },
+          { content: "NISN", rowSpan: 2 },
+          { content: "NAMA SISWA", rowSpan: 2 },
+          { content: "CALL", rowSpan: 2 },
+          { content: "L/P", rowSpan: 2 },
+          { content: `TANGGAL`, colSpan: daysInMonth },
+          { content: "RATA-RATA", rowSpan: 2 },
         ];
-      });
+        head2 = Array.from({ length: daysInMonth }, (_, i) =>
+          (i + 1).toString()
+        );
+
+        body = studentList.map((s, idx) => {
+          const sAtt = attMap[s.id] || {};
+          let sum = 0;
+          let count = 0;
+          const daily = Array.from({ length: daysInMonth }, (_, i) => {
+            const score = sAtt[i + 1]?.score;
+            if (score != null) {
+              sum += Number(score);
+              count++;
+            }
+            return score != null ? score : "";
+          });
+          const avg = count > 0 ? (sum / count).toFixed(1) : "-";
+          return [
+            idx + 1,
+            s.nis || "-",
+            s.nisn || "-",
+            s.name,
+            s.nickname || "-",
+            s.gender,
+            ...daily,
+            avg,
+          ];
+        });
+      } else {
+        head1 = [
+          { content: "NO", rowSpan: 2 },
+          { content: "NIS", rowSpan: 2 },
+          { content: "NISN", rowSpan: 2 },
+          { content: "NAMA SISWA", rowSpan: 2 },
+          { content: "CALL", rowSpan: 2 },
+          { content: "L/P", rowSpan: 2 },
+          { content: `TANGGAL`, colSpan: daysInMonth },
+          { content: "JUMLAH", colSpan: 4 },
+        ];
+        head2 = [
+          ...Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString()),
+          "S",
+          "I",
+          "A",
+          "T",
+        ];
+
+        body = studentList.map((s, idx) => {
+          const sAtt = attMap[s.id] || {};
+          const c = { S: 0, I: 0, A: 0, T: 0 };
+          const daily = Array.from({ length: daysInMonth }, (_, i) => {
+            const data = sAtt[i + 1] || {};
+            const v = data.status;
+            if (v) {
+              if (c[v] !== undefined) c[v]++;
+            }
+            if (v === "H") return "v";
+            if (v === "T") return formatLate(data.lateMinutes);
+            return v || "";
+          });
+          return [
+            idx + 1,
+            s.nis || "-",
+            s.nisn || "-",
+            s.name,
+            s.nickname || "-",
+            s.gender,
+            ...daily,
+            c.S || "",
+            c.I || "",
+            c.A || "",
+            c.T || "",
+          ];
+        });
+      }
 
       doc.autoTable({
         head: [head1, head2],
@@ -1393,8 +1604,9 @@ function ReportPanel({ userData, showToast, libsReady }) {
         footerY + 28
       );
 
+      const fileNamePrefix = reportCategory === "score" ? "NILAI" : "HADIR";
       doc.save(
-        `REKAP_${displaySubject}_${selectedClass}_${MONTHS[
+        `REKAP_${fileNamePrefix}_${displaySubject}_${selectedClass}_${MONTHS[
           selectedMonth
         ].toUpperCase()}.pdf`
       );
@@ -1414,7 +1626,7 @@ function ReportPanel({ userData, showToast, libsReady }) {
         </div>
         <div>
           <h3 className="font-black text-indigo-950 uppercase text-lg">
-            Laporan PDF
+            Laporan PDF v1.0
           </h3>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
             Mode:{" "}
@@ -1526,7 +1738,7 @@ function ReportPanel({ userData, showToast, libsReady }) {
           </select>
           {isWali && (
             <p className="text-[8px] font-bold text-indigo-500 uppercase px-2 italic">
-              * Terkunci sesuai wali kelas
+              * Terkunci sesuai wali kelas terdaftar
             </p>
           )}
         </div>
@@ -1567,10 +1779,42 @@ function ReportPanel({ userData, showToast, libsReady }) {
             value={selectedTA}
             onChange={(e) => setSelectedTA(e.target.value)}
           >
+            <option value="2024-2025">2024-2025</option>
             <option value="2025-2026">2025-2026</option>
-            <option value="2026-2027">2026-2027</option>
-            <option value="2027-2028">2027-2028</option>
           </select>
+        </div>
+
+        {/* Step: Pilih Kategori Laporan (Hadir / Nilai) */}
+        <div className="space-y-2">
+          <label className="text-[9px] font-black text-slate-400 uppercase">
+            {isAdmin
+              ? adminReportType === "bidang"
+                ? "7. Pilih Jenis Rekap"
+                : "6. Pilih Jenis Rekap"
+              : "4. Pilih Jenis Rekap"}
+          </label>
+          <div className="flex p-1 bg-white rounded-xl border border-slate-200">
+            <button
+              onClick={() => setReportCategory("attendance")}
+              className={`flex-1 py-3 rounded-lg text-[9px] font-black uppercase transition-all ${
+                reportCategory === "attendance"
+                  ? "bg-indigo-600 text-white shadow-md"
+                  : "text-slate-400 hover:bg-slate-50"
+              }`}
+            >
+              Rekap Kehadiran
+            </button>
+            <button
+              onClick={() => setReportCategory("score")}
+              className={`flex-1 py-3 rounded-lg text-[9px] font-black uppercase transition-all ${
+                reportCategory === "score"
+                  ? "bg-indigo-600 text-white shadow-md"
+                  : "text-slate-400 hover:bg-slate-50"
+              }`}
+            >
+              Rekap Nilai
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1592,7 +1836,9 @@ function ReportPanel({ userData, showToast, libsReady }) {
         ) : (
           <Download size={20} />
         )}
-        {isGenerating ? "MENGUNDUH..." : "download pdf"}
+        {isGenerating
+          ? "MENGUNDUH..."
+          : `UNDUH REKAP ${reportCategory === "score" ? "NILAI" : "HADIR"} F4`}
       </button>
 
       {/* Info Tambahan */}
