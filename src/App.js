@@ -1,1860 +1,1709 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { initializeApp } from "firebase/app";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { initializeApp, getApps } from "firebase/app";
 import {
   getAuth,
-  onAuthStateChanged,
-  signOut,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  sendEmailVerification,
-  sendPasswordResetEmail,
-  signInWithCustomToken,
-  signInAnonymously,
+  signOut,
+  onAuthStateChanged,
 } from "firebase/auth";
 import {
   getFirestore,
-  collection,
   doc,
-  setDoc,
   getDoc,
+  setDoc,
+  updateDoc,
+  collection,
+  getDocs,
+  addDoc,
   onSnapshot,
   query,
-  where,
   deleteDoc,
-  writeBatch,
-  getDocs,
 } from "firebase/firestore";
-import {
-  LogOut,
-  ClipboardCheck,
-  Users,
-  LayoutDashboard,
-  Sparkles,
-  FileText,
-  Trash2,
-  Clock,
-  Check,
-  X,
-  AlertCircle,
-  Eye,
-  EyeOff,
-  Download,
-  BookOpen,
-  ChevronRight,
-  Star,
-} from "lucide-react";
+import "./styles.css";
 
-// --- KONFIGURASI FIREBASE ---
-const firebaseConfig = {
-  apiKey: "AIzaSyDBHdt-fdToMgbZhsWo0N0XB7sY05qsbAY",
-  authDomain: "igsattendance-65ada.firebaseapp.com",
-  projectId: "igsattendance-65ada",
-  storageBucket: "igsattendance-65ada.firebasestorage.app",
-  messagingSenderId: "511035126689",
-  appId: "1:511035126689:web:a59d5c6eb8decf68fdd1e0",
-};
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== "undefined" ? __app_id : "igs-portal-v1-0";
-
-const JENJANG_DATA = {
-  PAUD: ["PLAYGROUP", "TK A1", "TK A2", "TK B1", "TK B2"],
-  SD: [
-    "1 AL QALAM",
-    "1 AL ASHR",
-    "2 AL KAHFI",
-    "2 AL MULK",
-    "3 AL WAQIAH",
-    "3 AR RAHMAN",
-    "4 AN NABA",
-    "4 AN NAZIAH",
-    "5 ABASA",
-    "5 AT TAKWIR",
-    "6 AL INFITHAR",
-    "6 AL MUTHAFFIFIN",
-  ],
-  SMP: [
-    "7 AL INSYIQAQ",
-    "7 AL BURUJ",
-    "8 ATH THARIQ",
-    "8 AL ALA",
-    "9 AL GHA SYIYAH",
-    "9 AL FAJR",
-  ],
+// ============================================================
+// FIREBASE CONFIG
+// ============================================================
+// Ganti nilai di bawah dengan config Firebase yang sama seperti
+// yang sudah Anda gunakan di CodeSandbox sebelumnya.
+// Bisa juga memasukkan config melalui window.__firebase_config.
+const FALLBACK_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCSzFjM6yM7kLl8lh8BXMcbT3cvdRjXMs0",
+  authDomain: "portal-igs.firebaseapp.com",
+  projectId: "portal-igs",
+  storageBucket: "portal-igs.firebasestorage.app",
+  messagingSenderId: "644724601752",
+  appId: "1:644724601752:web:91b61284cbb732c49a71ed",
+  measurementId: "G-PR11VKLQ3H",
 };
 
-const KEPALA_SEKOLAH = {
-  PAUD: { nama: "Muammar", jabatan: "Kepala PAUD Islamic Global Preschool" },
-  SD: {
-    nama: "Sukerti, S.S., S.Pd.",
-    jabatan: "Kepala SD Islamic Global School",
-  },
-  SMP: { nama: "Ika Sumarti", jabatan: "Kepala SMP Islamic Global School" },
-  SYSTEM: {
-    nama: "Sukerti, S.S., S.Pd.",
-    jabatan: "Kepala SD Islamic Global School",
-  },
+function getFirebaseConfig() {
+  if (typeof window !== "undefined" && window.__firebase_config) {
+    try {
+      return typeof window.__firebase_config === "string"
+        ? JSON.parse(window.__firebase_config)
+        : window.__firebase_config;
+    } catch (error) {
+      console.error("Invalid __firebase_config:", error);
+    }
+  }
+  return FALLBACK_FIREBASE_CONFIG;
+}
+
+const firebaseConfig = getFirebaseConfig();
+const firebaseReady = Boolean(
+  firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId
+);
+
+let firebaseApp = null;
+let auth = null;
+let db = null;
+
+if (firebaseReady) {
+  firebaseApp = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+  auth = getAuth(firebaseApp);
+  db = getFirestore(firebaseApp);
+}
+
+const APP_ID =
+  typeof window !== "undefined" && window.__app_id
+    ? window.__app_id
+    : "igs-portal-1";
+const getPublicPath = (col) => `artifacts/${APP_ID}/public/data/${col}`;
+
+const ROLES = {
+  admin: "Admin Sekolah",
+  guru_kelas: "Guru Kelas",
+  guru_mapel: "Guru Mapel",
+  karyawan: "Karyawan / Staff",
 };
 
-const LOGO_URL =
-  "https://islamicglobalschool.sch.id/wp-content/uploads/2023/07/LOGO-IGS-PNG.png";
-const MONTHS = [
-  "Januari",
-  "Februari",
-  "Maret",
-  "April",
-  "Mei",
-  "Juni",
-  "Juli",
-  "Agustus",
-  "September",
-  "Oktober",
-  "November",
-  "Desember",
+const quotes = [
+  "Pendidikan adalah senjata paling mematikan di dunia, karena dengan pendidikan, Anda dapat mengubah dunia. - Nelson Mandela",
+  "Hiduplah seolah engkau mati besok. Belajarlah seolah engkau hidup selamanya. - Mahatma Gandhi",
+  "Barangsiapa yang keluar untuk mencari ilmu, maka ia berada di jalan Allah hingga ia pulang. - HR. Tirmidzi",
+  "Ilmu itu seperti air. Jika ia tidak bergerak, maka ia akan menjadi keruh lalu membusuk. - Imam Syafi'i",
+  "Tujuan pendidikan itu untuk mempertajam kecerdasan, memperkukuh kemauan serta memperhalus perasaan. - Tan Malaka",
 ];
 
-const UI = {
-  CARD: "bg-white border border-slate-100 shadow-2xl rounded-[2.5rem]",
-  INPUT:
-    "w-full p-4 bg-[#F8FAFC] border border-slate-200 rounded-2xl focus:ring-4 focus:ring-indigo-100 focus:border-indigo-500 transition-all font-bold text-indigo-950 outline-none text-sm placeholder:text-slate-400 disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed",
-  BTN_PRIMARY:
-    "w-full py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-lg hover:bg-indigo-700 active:scale-[0.98] transition-all uppercase tracking-widest text-xs disabled:opacity-50",
+const emptyState = {
+  user: null,
+  userProfile: null,
+  users: [],
+  classes: [],
+  students: [],
+  printRequests: [],
+  leaveRequests: [],
+  attendance: [],
+  grades: [],
+  settings: { schoolYear: "2023/2024", principal: "Miftahul Huda, S.Pd" },
 };
 
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [userData, setUserData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [view, setView] = useState("login");
-  const [toast, setToast] = useState(null);
-  const [libsReady, setLibsReady] = useState(false);
-
-  const showToast = (msg, type = "info") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 4000);
-  };
-
-  useEffect(() => {
-    const loadScript = (id, src) => {
-      return new Promise((resolve) => {
-        if (document.getElementById(id)) return resolve();
-        const script = document.createElement("script");
-        script.id = id;
-        script.src = src;
-        script.async = false;
-        script.onload = () => resolve();
-        document.head.appendChild(script);
-      });
-    };
-
-    const init = async () => {
-      await loadScript(
-        "jspdf-main",
-        "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
-      );
-      await loadScript(
-        "jspdf-autotable",
-        "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"
-      );
-      setLibsReady(true);
-    };
-
-    init();
-  }, []);
-
-  const fetchUserProfile = useCallback(
-    async (u) => {
-      try {
-        const profileRef = doc(db, "artifacts", appId, "users", u.uid);
-        const snap = await getDoc(profileRef);
-        if (snap.exists()) {
-          const data = snap.data();
-          setUserData(data);
-          if (["login", "register", "forgot"].includes(view)) {
-            setView(data.role === "admin" ? "admin" : "dashboard");
-          }
-        }
-      } catch (e) {
-        console.error(e);
-      }
-    },
-    [view]
-  );
-
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        if (
-          typeof __initial_auth_token !== "undefined" &&
-          __initial_auth_token
-        ) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (e) {
-        console.error("Auth init error:", e);
-      }
-    };
-    initAuth();
-
-    const unsubscribe = onAuthStateChanged(auth, async (u) => {
-      if (u) {
-        if (u.isAnonymous || u.emailVerified) {
-          setUser(u);
-          if (!u.isAnonymous) await fetchUserProfile(u);
-        } else {
-          setView("verify");
-        }
-      } else {
-        setUser(null);
-        setUserData(null);
-      }
-      setLoading(false);
-    });
-    return () => unsubscribe();
-  }, [fetchUserProfile]);
-
-  if (loading)
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 gap-4">
-        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="font-black text-indigo-600 uppercase tracking-widest text-[10px]">
-          Memuat IGS Portal...
-        </p>
-      </div>
-    );
-
+function Icon({ name, fill = false, className = "" }) {
   return (
-    <div className="min-h-screen bg-[#FDFDFF] text-slate-900 font-sans">
-      {toast && (
-        <div
-          className={`fixed top-6 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-2xl shadow-2xl font-bold text-[10px] flex items-center gap-2 animate-in slide-in-from-top ${
-            toast.type === "error"
-              ? "bg-rose-600 text-white"
-              : "bg-slate-900 text-white"
-          }`}
-        >
-          {toast.type === "error" ? (
-            <AlertCircle size={14} />
-          ) : (
-            <Sparkles size={14} className="text-yellow-400" />
-          )}
-          {toast.msg}
-        </div>
-      )}
+    <i
+      className={`${fill ? "ph-fill" : "ph"} ph-${name} ${className}`.trim()}
+    />
+  );
+}
 
-      {!user || user.isAnonymous || !userData ? (
-        <AuthScreen view={view} setView={setView} showToast={showToast} />
-      ) : (
-        <div className="flex flex-col lg:flex-row min-h-screen">
-          <aside className="w-full lg:w-72 p-6 lg:h-screen lg:sticky lg:top-0 shrink-0">
-            <div
-              className={`${UI.CARD} h-full p-8 flex flex-col border-none bg-white shadow-sm`}
-            >
-              <div className="flex items-center gap-3 mb-10">
-                <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm p-1">
-                  <img
-                    src={LOGO_URL}
-                    alt="Logo"
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-                <div>
-                  <h1 className="font-black text-indigo-950 text-xs leading-none tracking-tighter uppercase">
-                    IGS Portal
-                  </h1>
-                  <p className="text-[8px] font-bold text-slate-400 uppercase mt-1">
-                    v1.1 LIQUID EDITION
-                  </p>
-                </div>
-              </div>
-              <nav className="space-y-2 flex-1">
-                {userData.role === "admin" ? (
-                  <>
-                    <NavItem
-                      active={view === "admin"}
-                      icon={<Users size={18} />}
-                      label="Database Siswa"
-                      onClick={() => setView("admin")}
-                    />
-                    <NavItem
-                      active={view === "report"}
-                      icon={<FileText size={18} />}
-                      label="Rekap Semua PDF"
-                      onClick={() => setView("report")}
-                    />
-                  </>
-                ) : (
-                  <>
-                    <NavItem
-                      active={view === "dashboard"}
-                      icon={<LayoutDashboard size={18} />}
-                      label="Beranda"
-                      onClick={() => setView("dashboard")}
-                    />
-                    <NavItem
-                      active={view === "attendance"}
-                      icon={<ClipboardCheck size={18} />}
-                      label={
-                        userData.role === "bidang"
-                          ? "Absen Mapel"
-                          : "Absensi Harian"
-                      }
-                      onClick={() => setView("attendance")}
-                    />
-                    <NavItem
-                      active={view === "report"}
-                      icon={<FileText size={18} />}
-                      label="Laporan PDF"
-                      onClick={() => setView("report")}
-                    />
-                  </>
-                )}
-              </nav>
-              <div className="pt-6 border-t border-slate-100">
-                <button
-                  onClick={() => {
-                    signOut(auth);
-                    setView("login");
-                  }}
-                  className="w-full flex items-center justify-center gap-2 p-4 text-rose-500 font-black text-[10px] bg-rose-50 rounded-xl hover:bg-rose-100 transition-all uppercase"
-                >
-                  <LogOut size={14} /> Log Out
-                </button>
-              </div>
-            </div>
-          </aside>
-
-          <main className="flex-1 p-6 lg:p-10 overflow-y-auto">
-            {view === "dashboard" && <Dashboard userData={userData} />}
-            {view === "attendance" && (
-              <AttendanceManager userData={userData} showToast={showToast} />
-            )}
-            {view === "report" && (
-              <ReportPanel
-                userData={userData}
-                showToast={showToast}
-                libsReady={libsReady}
-              />
-            )}
-            {view === "admin" && <AdminDatabase showToast={showToast} />}
-          </main>
+function ModalAlert({ alert, onClose }) {
+  if (!alert.open) return null;
+  return (
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center">
+      <div className="glass-panel p-6 max-w-sm w-full mx-4 alert-box-enter">
+        <h3 className="text-xl font-bold mb-2">{alert.title}</h3>
+        <p className="mb-6 opacity-80">{alert.message}</p>
+        <div className="flex justify-end">
+          <button onClick={onClose} className="glass-btn glass-btn-primary">
+            Tutup
+          </button>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-function NavItem({ active, icon, label, onClick }) {
+function LoadingOverlay({ show }) {
+  if (!show) return null;
   return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center gap-4 p-4 rounded-xl font-black text-[10px] transition-all uppercase ${
-        active
-          ? "bg-indigo-600 text-white shadow-lg"
-          : "text-slate-400 hover:bg-slate-50"
-      }`}
-    >
-      {icon} <span>{label}</span>
-    </button>
+    <div className="modal-overlay fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="animate-spin text-white">
+        <Icon name="spinner-gap" className="text-5xl" />
+      </div>
+    </div>
   );
 }
 
-function AuthScreen({ view, setView, showToast }) {
-  const [form, setForm] = useState({
-    email: "",
-    password: "",
+function AuthView({ onLogin, onRegister, loading }) {
+  const [mode, setMode] = useState("login");
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegPassword, setShowRegPassword] = useState(false);
+  const [login, setLogin] = useState({ email: "", password: "" });
+  const [register, setRegister] = useState({
     name: "",
-    role: "wali",
-    jenjang: "SD",
-    className: "1 AL QALAM",
-    mapel: "",
+    email: "",
+    phone: "",
+    role: "admin",
+    password: "",
   });
-  const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
 
-  useEffect(() => {
-    if (view === "register") {
-      const defaultClass = JENJANG_DATA[form.jenjang]?.[0] || "";
-      setForm((prev) => ({ ...prev, className: defaultClass }));
-    }
-  }, [form.jenjang, view]);
+  const submitLogin = (e) => {
+    e.preventDefault();
+    onLogin(login);
+  };
 
-  const handleAuth = async (e) => {
+  const submitRegister = (e) => {
+    e.preventDefault();
+    onRegister(register);
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="glass-panel max-w-md w-full p-8 relative overflow-hidden">
+        <div className="absolute -top-10 -right-10 w-32 h-32 bg-blue-500/30 rounded-full blur-3xl" />
+        <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-purple-500/30 rounded-full blur-3xl" />
+
+        <div className="relative z-10">
+          <div className="text-center mb-8">
+            <div className="w-20 h-20 mx-auto bg-white rounded-2xl flex items-center justify-center mb-4 shadow-lg">
+              <Icon name="student" fill className="text-4xl text-blue-600" />
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight">Portal IGS</h1>
+            <p className="opacity-70 mt-1">Islamic Global School PAUD-SD-SMP</p>
+          </div>
+
+          {mode === "login" ? (
+            <form onSubmit={submitLogin} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1 opacity-80">
+                  Email
+                </label>
+                <div className="relative">
+                  <Icon
+                    name="envelope"
+                    className="absolute left-3 top-3.5 opacity-50"
+                  />
+                  <input
+                    type="email"
+                    className="glass-input pl-10"
+                    placeholder="nama@igs.sch.id"
+                    required
+                    value={login.email}
+                    onChange={(e) =>
+                      setLogin({ ...login, email: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 opacity-80">
+                  Password
+                </label>
+                <div className="relative">
+                  <Icon
+                    name="lock"
+                    className="absolute left-3 top-3.5 opacity-50"
+                  />
+                  <input
+                    type={showLoginPassword ? "text" : "password"}
+                    className="glass-input pl-10 pr-10"
+                    placeholder="••••••••"
+                    required
+                    value={login.password}
+                    onChange={(e) =>
+                      setLogin({ ...login, password: e.target.value })
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowLoginPassword((v) => !v)}
+                    className="absolute right-3 top-3.5 opacity-50 hover:opacity-100"
+                  >
+                    <Icon name={showLoginPassword ? "eye-slash" : "eye"} />
+                  </button>
+                </div>
+                <div className="text-right mt-1">
+                  <button
+                    type="button"
+                    className="text-xs text-blue-500 hover:underline"
+                  >
+                    Lupa Password?
+                  </button>
+                </div>
+              </div>
+              <button
+                type="submit"
+                className="glass-btn glass-btn-primary w-full mt-6"
+                disabled={loading}
+              >
+                Masuk
+              </button>
+              <p className="text-center text-sm mt-4 opacity-80">
+                Belum punya akun?{" "}
+                <button
+                  type="button"
+                  onClick={() => setMode("register")}
+                  className="text-blue-500 font-semibold hover:underline"
+                >
+                  Daftar disini
+                </button>
+              </p>
+            </form>
+          ) : (
+            <form onSubmit={submitRegister} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1 opacity-80">
+                  Nama Lengkap
+                </label>
+                <input
+                  type="text"
+                  className="glass-input"
+                  placeholder="Masukkan nama"
+                  required
+                  value={register.name}
+                  onChange={(e) =>
+                    setRegister({ ...register, name: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 opacity-80">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  className="glass-input"
+                  placeholder="nama@igs.sch.id"
+                  required
+                  value={register.email}
+                  onChange={(e) =>
+                    setRegister({ ...register, email: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 opacity-80">
+                  No. WA
+                </label>
+                <input
+                  type="tel"
+                  className="glass-input"
+                  placeholder="0812..."
+                  required
+                  value={register.phone}
+                  onChange={(e) =>
+                    setRegister({ ...register, phone: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 opacity-80">
+                  Jenis Akun
+                </label>
+                <select
+                  className="glass-input"
+                  value={register.role}
+                  onChange={(e) =>
+                    setRegister({ ...register, role: e.target.value })
+                  }
+                >
+                  <option value="admin">Admin Sekolah</option>
+                  <option value="guru_kelas">Guru Kelas</option>
+                  <option value="guru_mapel">Guru Mapel</option>
+                  <option value="karyawan">Karyawan / Staff</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1 opacity-80">
+                  Password
+                </label>
+                <div className="relative">
+                  <input
+                    type={showRegPassword ? "text" : "password"}
+                    className="glass-input pr-10"
+                    required
+                    value={register.password}
+                    onChange={(e) =>
+                      setRegister({ ...register, password: e.target.value })
+                    }
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowRegPassword((v) => !v)}
+                    className="absolute right-3 top-3.5 opacity-50 hover:opacity-100"
+                  >
+                    <Icon name={showRegPassword ? "eye-slash" : "eye"} />
+                  </button>
+                </div>
+              </div>
+              <button
+                type="submit"
+                className="glass-btn glass-btn-primary w-full mt-6"
+                disabled={loading}
+              >
+                Daftar Akun
+              </button>
+              <p className="text-center text-sm mt-4 opacity-80">
+                Sudah punya akun?{" "}
+                <button
+                  type="button"
+                  onClick={() => setMode("login")}
+                  className="text-blue-500 font-semibold hover:underline"
+                >
+                  Masuk
+                </button>
+              </p>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Dashboard({ profile }) {
+  const dayOfYear = Math.floor(
+    (Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000
+  );
+  const quote = quotes[dayOfYear % quotes.length];
+  return (
+    <>
+      <div className="glass-panel p-6 mb-6">
+        <h2 className="text-2xl font-bold mb-2">
+          Selamat Datang, {profile?.name || "User"}!
+        </h2>
+        <p className="opacity-80">
+          {new Date().toLocaleDateString("id-ID", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+          })}
+        </p>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="glass-panel p-6 relative overflow-hidden">
+          <Icon
+            name="quotes"
+            fill
+            className="absolute -top-4 -right-4 text-8xl opacity-10 text-blue-500"
+          />
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+            <Icon name="lightbulb" className="text-yellow-500" /> Kutipan Hari
+            Ini
+          </h3>
+          <p className="italic opacity-90 leading-relaxed">“{quote}”</p>
+        </div>
+        <div className="glass-panel p-6">
+          <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+            <Icon name="newspaper" className="text-blue-500" /> Info & Berita
+          </h3>
+          <div className="space-y-4">
+            <div className="border-l-4 border-blue-500 pl-3">
+              <h4 className="font-semibold text-sm">
+                Persiapan Ujian Semester
+              </h4>
+              <p className="text-xs opacity-70 mt-1">
+                Harap segera mengumpulkan soal ujian maksimal hari Jumat.
+              </p>
+            </div>
+            <div className="border-l-4 border-purple-500 pl-3">
+              <h4 className="font-semibold text-sm">Rapat Rutin Guru</h4>
+              <p className="text-xs opacity-70 mt-1">
+                Rapat evaluasi bulanan akan diadakan pada akhir bulan di aula.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function PrintView({ state, showAlert, setLoading }) {
+  const isAdmin = state.userProfile?.role === "admin";
+  const [openForm, setOpenForm] = useState(false);
+  const [form, setForm] = useState({
+    documentName: "",
+    type: "Print Warna",
+    copies: 1,
+    dateNeeded: "",
+  });
+  const requests = useMemo(() => {
+    return [...state.printRequests]
+      .filter((r) => isAdmin || r.userId === state.userProfile?.id)
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  }, [state.printRequests, isAdmin, state.userProfile?.id]);
+
+  async function submit(e) {
     e.preventDefault();
     setLoading(true);
     try {
-      if (view === "login") {
-        const res = await signInWithEmailAndPassword(
-          auth,
-          form.email,
-          form.password
-        );
-        if (!res.user.emailVerified) {
-          await signOut(auth);
-          setView("verify");
-        }
-      } else if (view === "register") {
-        const res = await createUserWithEmailAndPassword(
-          auth,
-          form.email,
-          form.password
-        );
-        const profile = {
-          name: form.name.toUpperCase(),
-          email: form.email.toLowerCase(),
-          role: form.role,
-          jenjang: form.role === "admin" ? "SYSTEM" : form.jenjang,
-          className:
-            form.role === "wali"
-              ? form.className
-              : form.role === "admin"
-              ? "ADMIN"
-              : "ALL-ACCESS",
-          mapel:
-            form.role === "bidang"
-              ? form.mapel.toUpperCase()
-              : form.role === "admin"
-              ? "ADMIN"
-              : "Wali Kelas",
-          uid: res.user.uid,
-        };
-        await setDoc(
-          doc(db, "artifacts", appId, "users", res.user.uid),
-          profile
-        );
-        await sendEmailVerification(res.user);
-        await signOut(auth);
-        setView("verify");
-      } else if (view === "forgot") {
-        await sendPasswordResetEmail(auth, form.email);
-        showToast("Link reset password dikirim ke email.");
-        setView("login");
-      }
-    } catch (err) {
-      console.error(err);
-      showToast("Gagal melakukan aksi autentikasi.", "error");
+      await addDoc(collection(db, getPublicPath("print_requests")), {
+        userId: state.userProfile.id,
+        userName: state.userProfile.name,
+        documentName: form.documentName,
+        type: form.type,
+        copies: String(form.copies),
+        dateNeeded: form.dateNeeded,
+        status: "pending",
+        handlerName: "",
+        timestamp: new Date().toISOString(),
+      });
+      setOpenForm(false);
+      setForm({
+        documentName: "",
+        type: "Print Warna",
+        copies: 1,
+        dateNeeded: "",
+      });
+      showAlert("Sukses", "Pengajuan berhasil dikirim.");
+    } catch (error) {
+      showAlert("Error", error.message);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  if (view === "verify")
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6 bg-[#F8FAFC]">
-        <div className={`${UI.CARD} w-full max-w-[460px] p-10 text-center`}>
-          <Clock
-            size={48}
-            className="mx-auto text-amber-500 mb-6 animate-pulse"
-          />
-          <h2 className="text-2xl font-black text-indigo-950 uppercase mb-4">
-            Verifikasi Email
-          </h2>
-          <p className="text-xs font-medium text-slate-500 mb-8">
-            Link verifikasi telah dikirim ke email Anda.
-          </p>
-          <button onClick={() => setView("login")} className={UI.BTN_PRIMARY}>
-            KEMBALI KE LOGIN
-          </button>
-        </div>
-      </div>
-    );
+  async function updateStatus(id, status) {
+    try {
+      await updateDoc(doc(db, getPublicPath("print_requests"), id), {
+        status,
+        handlerName: state.userProfile.name,
+      });
+    } catch (error) {
+      showAlert("Error", error.message);
+    }
+  }
+
+  async function removeRequest(id) {
+    if (!window.confirm("Yakin membatalkan pengajuan ini?")) return;
+    try {
+      await deleteDoc(doc(db, getPublicPath("print_requests"), id));
+    } catch (error) {
+      showAlert("Error", error.message);
+    }
+  }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-6 bg-[#F8FAFC]">
-      <div className={`${UI.CARD} w-full max-w-[460px] p-10 lg:p-14`}>
-        <div className="text-center mb-10">
-          <div className="w-24 h-24 bg-white border border-slate-100 shadow-xl rounded-[2.5rem] mx-auto mb-6 flex items-center justify-center p-4">
-            <img
-              src={LOGO_URL}
-              alt="Logo"
-              className="w-full h-full object-contain"
+    <div>
+      <div className="flex justify-between items-center mb-6 gap-4">
+        <h2 className="text-2xl font-bold">Pengajuan Print / Fotocopy</h2>
+        {!isAdmin && (
+          <button
+            onClick={() => setOpenForm((v) => !v)}
+            className="glass-btn glass-btn-primary"
+          >
+            <Icon name="plus" /> Buat Pengajuan
+          </button>
+        )}
+      </div>
+      {openForm && !isAdmin && (
+        <div className="glass-panel p-6 mb-6">
+          <h3 className="font-bold mb-4">Form Pengajuan Baru</h3>
+          <form
+            onSubmit={submit}
+            className="grid grid-cols-1 md:grid-cols-2 gap-4"
+          >
+            <div>
+              <label className="block text-sm mb-1 opacity-80">
+                Nama Dokumen
+              </label>
+              <input
+                className="glass-input"
+                required
+                value={form.documentName}
+                onChange={(e) =>
+                  setForm({ ...form, documentName: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <label className="block text-sm mb-1 opacity-80">
+                Jenis / Layanan
+              </label>
+              <select
+                className="glass-input"
+                value={form.type}
+                onChange={(e) => setForm({ ...form, type: e.target.value })}
+              >
+                <option>Print Warna</option>
+                <option>Print Hitam Putih</option>
+                <option>Fotocopy</option>
+                <option>Laminating</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm mb-1 opacity-80">
+                Jumlah (Rangkap)
+              </label>
+              <input
+                type="number"
+                min="1"
+                className="glass-input"
+                required
+                value={form.copies}
+                onChange={(e) => setForm({ ...form, copies: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-sm mb-1 opacity-80">
+                Dipakai Kapan?
+              </label>
+              <input
+                type="date"
+                className="glass-input"
+                required
+                value={form.dateNeeded}
+                onChange={(e) =>
+                  setForm({ ...form, dateNeeded: e.target.value })
+                }
+              />
+            </div>
+            <div className="md:col-span-2 flex justify-end gap-2 mt-2">
+              <button
+                type="button"
+                onClick={() => setOpenForm(false)}
+                className="glass-btn"
+              >
+                Batal
+              </button>
+              <button type="submit" className="glass-btn glass-btn-primary">
+                Kirim Pengajuan
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      <div className="glass-panel overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="border-b border-black/10 dark:border-white/10 opacity-80">
+            <tr>
+              <th className="p-4">Tanggal</th>
+              {isAdmin && <th className="p-4">Pemohon</th>}
+              <th className="p-4">Dokumen</th>
+              <th className="p-4">Layanan</th>
+              <th className="p-4">Status</th>
+              <th className="p-4">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {requests.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={isAdmin ? 6 : 5}
+                  className="p-8 text-center opacity-50"
+                >
+                  Belum ada data pengajuan.
+                </td>
+              </tr>
+            ) : (
+              requests.map((req) => {
+                const statusText =
+                  req.status === "printing"
+                    ? "Sedang Diproses"
+                    : req.status === "done"
+                    ? "Selesai"
+                    : "Menunggu";
+                const statusClass =
+                  req.status === "pending"
+                    ? "status-pending"
+                    : req.status === "printing"
+                    ? "status-printing"
+                    : "status-done";
+                return (
+                  <tr
+                    key={req.id}
+                    className="border-b border-black/5 dark:border-white/5 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                  >
+                    <td className="p-4">
+                      {new Date(req.timestamp).toLocaleDateString("id-ID")}
+                    </td>
+                    {isAdmin && (
+                      <td className="p-4 font-medium">{req.userName}</td>
+                    )}
+                    <td className="p-4">
+                      <div className="font-medium">{req.documentName}</div>
+                      <div className="text-xs opacity-70">
+                        {req.copies} rangkap | Pst: {req.dateNeeded}
+                      </div>
+                    </td>
+                    <td className="p-4">{req.type}</td>
+                    <td className="p-4">
+                      <span className={`status-badge ${statusClass}`}>
+                        {statusText}
+                      </span>
+                      {req.handlerName && (
+                        <div className="text-xs opacity-60 mt-1">
+                          Oleh: {req.handlerName}
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-4 space-x-3">
+                      {isAdmin && req.status === "pending" && (
+                        <button
+                          onClick={() => updateStatus(req.id, "printing")}
+                          className="text-blue-500 text-xs font-semibold"
+                        >
+                          Ambil Job
+                        </button>
+                      )}
+                      {isAdmin && req.status === "printing" && (
+                        <button
+                          onClick={() => updateStatus(req.id, "done")}
+                          className="text-green-500 text-xs font-semibold"
+                        >
+                          Tandai Selesai
+                        </button>
+                      )}
+                      {!isAdmin && req.status === "pending" && (
+                        <button
+                          onClick={() => removeRequest(req.id)}
+                          className="text-red-500 text-xs font-semibold"
+                        >
+                          Batal
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function AttendanceView({ state, showAlert, setLoading }) {
+  const isAdmin = state.userProfile?.role === "admin";
+  const accessibleClasses = useMemo(
+    () =>
+      isAdmin
+        ? state.classes
+        : state.classes.filter(
+            (c) =>
+              c.homeroomTeacherId === state.userProfile?.id ||
+              state.userProfile?.classes?.includes(c.id)
+          ),
+    [state.classes, state.userProfile, isAdmin]
+  );
+  const [classId, setClassId] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [records, setRecords] = useState({});
+  const [docId, setDocId] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      if (!classId || !date) {
+        setRecords({});
+        setDocId(null);
+        setLoaded(false);
+        return;
+      }
+      setLoaded(false);
+      try {
+        const students = state.students
+          .filter((s) => s.classId === classId)
+          .sort((a, b) => a.name.localeCompare(b.name));
+        const snap = await getDocs(
+          query(collection(db, getPublicPath("attendance")))
+        );
+        let existing = {};
+        let foundId = null;
+        snap.forEach((d) => {
+          const data = d.data();
+          if (data.classId === classId && data.date === date) {
+            existing = data.records || {};
+            foundId = d.id;
+          }
+        });
+        if (!cancelled) {
+          const next = {};
+          students.forEach((s) => {
+            next[s.id] = existing[s.id] || "H";
+          });
+          setRecords(next);
+          setDocId(foundId);
+          setLoaded(true);
+        }
+      } catch (error) {
+        if (!cancelled) showAlert("Error", error.message);
+      }
+    }
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [classId, date, state.students, showAlert]);
+
+  const students = useMemo(
+    () =>
+      state.students
+        .filter((s) => s.classId === classId)
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [state.students, classId]
+  );
+
+  async function save() {
+    if (!classId || !date)
+      return showAlert("Error", "Pilih kelas dan tanggal.");
+    setLoading(true);
+    try {
+      if (docId)
+        await updateDoc(doc(db, getPublicPath("attendance"), docId), {
+          records,
+        });
+      else
+        await addDoc(collection(db, getPublicPath("attendance")), {
+          classId,
+          date,
+          records,
+        });
+      showAlert("Sukses", "Data absensi berhasil disimpan.");
+    } catch (error) {
+      showAlert("Error", error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function exportPDF() {
+    if (!classId) return showAlert("Error", "Pilih kelas terlebih dahulu.");
+    if (!window.jspdf?.jsPDF)
+      return showAlert(
+        "Error",
+        "Library PDF belum termuat. Coba refresh halaman."
+      );
+    const PDF = window.jspdf.jsPDF;
+    const doc = new PDF("landscape", "mm", "a4");
+    const classData = state.classes.find((c) => c.id === classId);
+    const className = classData?.name || "";
+    const schoolYear = state.settings?.schoolYear || "";
+    const principal = state.settings?.principal || "";
+    const teacherName = state.userProfile?.name || "";
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("ISLAMIC GLOBAL SCHOOL", 148, 20, { align: "center" });
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+    doc.text("PAUD - SD - SMP", 148, 28, { align: "center" });
+    doc.setFontSize(10);
+    doc.text("Jl. Pendidikan No. 1, Kota Balikpapan", 148, 34, {
+      align: "center",
+    });
+    doc.setLineWidth(0.5);
+    doc.line(14, 38, 283, 38);
+    doc.setLineWidth(0.1);
+    doc.line(14, 39, 283, 39);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("DAFTAR HADIR SISWA", 148, 50, { align: "center" });
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Tahun Ajaran : ${schoolYear}`, 14, 60);
+    doc.text(`Kelas        : ${className}`, 14, 66);
+    doc.text(`Tanggal      : ${date}`, 14, 72);
+    const body = students.map((student, index) => [
+      index + 1,
+      student.nis || "-",
+      student.nisn || "-",
+      student.name,
+      student.nickname || "-",
+      student.gender || "-",
+      records[student.id] || "-",
+    ]);
+    if (typeof doc.autoTable === "function")
+      doc.autoTable({
+        startY: 78,
+        head: [
+          [
+            "No",
+            "NIS",
+            "NISN",
+            "Nama Lengkap",
+            "Panggilan",
+            "L/P",
+            "Status (H/S/I/A/T)",
+          ],
+        ],
+        body,
+        theme: "grid",
+        headStyles: { fillColor: [59, 130, 246] },
+        styles: { fontSize: 9 },
+      });
+    const finalY = (doc.lastAutoTable?.finalY || 100) + 20;
+    doc.text(
+      `Balikpapan, ${new Date().toLocaleDateString("id-ID")}`,
+      240,
+      finalY,
+      { align: "center" }
+    );
+    doc.text("Mengetahui,", 50, finalY);
+    doc.text("Kepala Sekolah", 50, finalY + 5);
+    doc.text(principal, 50, finalY + 25, { align: "center" });
+    doc.text("Guru Kelas", 240, finalY + 5, { align: "center" });
+    doc.text(teacherName, 240, finalY + 25, { align: "center" });
+    doc.save(`Absensi_${className}_${date}.pdf`);
+  }
+
+  const statuses = ["H", "S", "I", "A", "T"];
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">Absensi Siswa</h2>
+      </div>
+      <div className="glass-panel p-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+          <div>
+            <label className="block text-sm mb-1 opacity-80">Pilih Kelas</label>
+            <select
+              className="glass-input"
+              value={classId}
+              onChange={(e) => setClassId(e.target.value)}
+            >
+              <option value="">-- Pilih Kelas --</option>
+              {accessibleClasses.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm mb-1 opacity-80">Tanggal</label>
+            <input
+              type="date"
+              className="glass-input"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
             />
           </div>
-          <h2 className="text-2xl font-black text-indigo-950 uppercase">
-            {view === "login"
-              ? "Selamat Datang"
-              : view === "register"
-              ? "Daftar Akun"
-              : "Lupa Password"}
-          </h2>
-        </div>
-        <form onSubmit={handleAuth} className="space-y-4">
-          {view === "register" && (
-            <div className="space-y-4 mb-4">
-              <div className="p-1 bg-slate-100 rounded-2xl flex">
-                {["wali", "bidang", "admin"].map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => setForm({ ...form, role: r })}
-                    className={`flex-1 py-3 rounded-xl text-[9px] font-black uppercase transition-all ${
-                      form.role === r
-                        ? "bg-white text-indigo-600 shadow-sm"
-                        : "text-slate-400"
-                    }`}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
-              <input
-                placeholder="NAMA LENGKAP"
-                className={UI.INPUT}
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                required
-              />
-              {form.role !== "admin" && (
-                <div className="grid grid-cols-2 gap-2">
-                  <select
-                    className={UI.INPUT}
-                    value={form.jenjang}
-                    onChange={(e) =>
-                      setForm({ ...form, jenjang: e.target.value })
-                    }
-                  >
-                    {Object.keys(JENJANG_DATA).map((j) => (
-                      <option key={j} value={j}>
-                        {j}
-                      </option>
-                    ))}
-                  </select>
-                  {form.role === "wali" ? (
-                    <select
-                      className={UI.INPUT}
-                      value={form.className}
-                      onChange={(e) =>
-                        setForm({ ...form, className: e.target.value })
-                      }
-                    >
-                      {(JENJANG_DATA[form.jenjang] || []).map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      placeholder="MAPEL (Mis: PAI)"
-                      className={UI.INPUT}
-                      value={form.mapel}
-                      onChange={(e) =>
-                        setForm({ ...form, mapel: e.target.value })
-                      }
-                      required
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-          <input
-            type="email"
-            placeholder="ALAMAT EMAIL"
-            className={UI.INPUT}
-            value={form.email}
-            onChange={(e) => setForm({ ...form, email: e.target.value })}
-            required
-          />
-          {view !== "forgot" && (
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                placeholder="KATA SANDI"
-                className={UI.INPUT}
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300"
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-          )}
-          {view === "login" && (
-            <div className="text-right">
-              <button
-                type="button"
-                onClick={() => setView("forgot")}
-                className="text-[9px] font-bold text-slate-400 uppercase hover:text-indigo-600 transition-colors"
-              >
-                Lupa Password?
-              </button>
-            </div>
-          )}
-          <button disabled={loading} type="submit" className={UI.BTN_PRIMARY}>
-            {loading ? "PROSES..." : "LANJUTKAN"}
-          </button>
-        </form>
-        <div className="mt-8 text-center space-y-2">
-          <button
-            type="button"
-            onClick={() => setView(view === "login" ? "register" : "login")}
-            className="text-[10px] font-black text-indigo-600 uppercase"
-          >
-            {view === "login"
-              ? "Belum punya akun? Daftar"
-              : "Sudah punya akun? Login"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Dashboard({ userData }) {
-  return (
-    <div className="space-y-6">
-      <div className="bg-indigo-600 rounded-[3rem] p-10 text-white shadow-xl relative overflow-hidden">
-        <div className="relative z-10">
-          <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2">
-            Sesi Aktif:{" "}
-            {userData.role === "bidang"
-              ? "Guru Bidang"
-              : userData.role === "admin"
-              ? "Administrator"
-              : "Wali Kelas"}
-          </p>
-          <h2 className="text-3xl font-black uppercase">{userData?.name}</h2>
-          <div className="mt-6 flex flex-wrap gap-2">
-            <span className="px-4 py-2 bg-white/10 rounded-xl text-[9px] font-black uppercase border border-white/20">
-              {userData.role === "wali"
-                ? `Kelas: ${userData.className}`
-                : userData.role === "admin"
-                ? "Super User"
-                : `${userData.mapel} (${userData.jenjang})`}
-            </span>
+          <div className="flex gap-2">
+            <button
+              onClick={save}
+              className="glass-btn glass-btn-primary flex-1"
+            >
+              <Icon name="floppy-disk" /> Simpan
+            </button>
+            <button onClick={exportPDF} className="glass-btn flex-1">
+              <Icon name="file-pdf" className="text-red-500" /> Export PDF
+            </button>
           </div>
         </div>
-        <Sparkles
-          size={120}
-          className="absolute -bottom-10 -right-10 text-white opacity-10 rotate-12"
-        />
       </div>
+      {classId && (
+        <div className="glass-panel overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-black/10 dark:border-white/10 opacity-80">
+              <tr>
+                <th className="p-3">No</th>
+                <th className="p-3">NIS/NISN</th>
+                <th className="p-3">Nama Lengkap</th>
+                {statuses.map((s) => (
+                  <th key={s} className="p-3 text-center">
+                    {s}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loaded && students.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="p-8 text-center opacity-50">
+                    Belum ada data siswa di kelas ini.
+                  </td>
+                </tr>
+              )}
+              {!loaded && (
+                <tr>
+                  <td colSpan={8} className="p-8 text-center opacity-50">
+                    Loading...
+                  </td>
+                </tr>
+              )}
+              {loaded &&
+                students.map((student, index) => (
+                  <tr
+                    key={student.id}
+                    className="border-b border-black/5 dark:border-white/5"
+                  >
+                    <td className="p-3">{index + 1}</td>
+                    <td className="p-3 text-xs">
+                      {student.nis || "-"} / {student.nisn || "-"}
+                    </td>
+                    <td className="p-3 font-medium">{student.name}</td>
+                    {statuses.map((status) => (
+                      <td key={status} className="p-3 text-center">
+                        <input
+                          type="radio"
+                          name={`att-${student.id}`}
+                          checked={records[student.id] === status}
+                          onChange={() =>
+                            setRecords((r) => ({ ...r, [student.id]: status }))
+                          }
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+          <div className="p-4 text-xs opacity-70">
+            Keterangan: H=Hadir, S=Sakit, I=Izin, A=Alpa, T=Terlambat
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function AttendanceManager({ userData, showToast }) {
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
-  const isBidang = userData.role === "bidang";
-  const isAdmin = userData.role === "admin";
+function GradesView() {
+  return (
+    <div className="glass-panel p-6 text-center">
+      <Icon name="exam" className="text-6xl opacity-20 mb-4 inline-block" />
+      <h2 className="text-2xl font-bold mb-2">Input Nilai Siswa</h2>
+      <p className="opacity-70 mb-6">
+        Fitur input nilai per tugas & export PDF Portrait (Upcoming Update).
+      </p>
+    </div>
+  );
+}
+function LeaveView() {
+  return (
+    <div className="glass-panel p-6 text-center">
+      <Icon name="sign-out" className="text-6xl opacity-20 mb-4 inline-block" />
+      <h2 className="text-2xl font-bold mb-2">Izin Sementara Keluar</h2>
+      <p className="opacity-70 mb-6">
+        Fitur pengajuan izin keluar sekolah di jam kerja sedang dalam
+        pengembangan (Upcoming Update).
+      </p>
+      <button className="glass-btn opacity-50 cursor-not-allowed">
+        Ajukan Izin Baru
+      </button>
+    </div>
+  );
+}
 
-  const [selectedClass, setSelectedClass] = useState(() => {
-    if (
-      isAdmin ||
-      userData.className === "ALL-ACCESS" ||
-      userData.className === "ADMIN"
-    ) {
-      return JENJANG_DATA["SD"]?.[0] || "";
+function AdminView({ state, showAlert, setLoading }) {
+  const [tab, setTab] = useState("users");
+  const [className, setClassName] = useState("");
+  const [teacherId, setTeacherId] = useState("");
+  const [importClassId, setImportClassId] = useState("");
+  const [importText, setImportText] = useState("");
+  const [year, setYear] = useState(state.settings?.schoolYear || "");
+  const [principal, setPrincipal] = useState(state.settings?.principal || "");
+  const teachers = state.users.filter(
+    (u) => u.role?.includes("guru") && u.status === "approved"
+  );
+
+  useEffect(() => {
+    if (!importClassId && state.classes[0])
+      setImportClassId(state.classes[0].id);
+  }, [state.classes, importClassId]);
+  useEffect(() => {
+    setYear(state.settings?.schoolYear || "");
+    setPrincipal(state.settings?.principal || "");
+  }, [state.settings]);
+
+  async function approveUser(uid) {
+    try {
+      await updateDoc(doc(db, getPublicPath("users"), uid), {
+        status: "approved",
+      });
+      showAlert("Sukses", "User disetujui.");
+    } catch (e) {
+      showAlert("Error", e.message);
     }
-    return userData.className;
-  });
+  }
+  async function deleteUser(uid) {
+    if (!window.confirm("Hapus user ini dari database?")) return;
+    try {
+      await deleteDoc(doc(db, getPublicPath("users"), uid));
+    } catch (e) {
+      showAlert("Error", e.message);
+    }
+  }
+  async function addClass(e) {
+    e.preventDefault();
+    try {
+      await addDoc(collection(db, getPublicPath("classes")), {
+        name: className,
+        homeroomTeacherId: teacherId,
+      });
+      setClassName("");
+      setTeacherId("");
+      showAlert("Sukses", "Kelas berhasil ditambahkan.");
+    } catch (e) {
+      showAlert("Error", e.message);
+    }
+  }
+  async function deleteClass(id) {
+    if (!window.confirm("Hapus kelas?")) return;
+    try {
+      await deleteDoc(doc(db, getPublicPath("classes"), id));
+    } catch (e) {
+      showAlert("Error", e.message);
+    }
+  }
+  async function processImport() {
+    if (!importClassId || !importText.trim())
+      return showAlert("Error", "Isi data dan pilih kelas.");
+    setLoading(true);
+    let count = 0;
+    try {
+      for (const line of importText.split("\n")) {
+        if (!line.trim()) continue;
+        const parts = line.split(/,|\t/).map((s) => s.trim());
+        if (parts.length >= 5) {
+          await addDoc(collection(db, getPublicPath("students")), {
+            nis: parts[0],
+            nisn: parts[1],
+            name: parts[2],
+            nickname: parts[3],
+            gender: parts[4],
+            classId: importClassId,
+          });
+          count += 1;
+        }
+      }
+      setImportText("");
+      showAlert("Berhasil", `${count} siswa berhasil diimport.`);
+    } catch (e) {
+      showAlert("Error", e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+  async function saveSettings() {
+    try {
+      await setDoc(
+        doc(db, getPublicPath("settings"), "global"),
+        { schoolYear: year, principal },
+        { merge: true }
+      );
+      showAlert("Sukses", "Pengaturan disimpan.");
+    } catch (e) {
+      showAlert("Error", e.message);
+    }
+  }
 
-  const [students, setStudents] = useState([]);
-  const [attendance, setAttendance] = useState({});
-  const [overlay, setOverlay] = useState(null); // { id: studentId, type: 'LATE' | 'CROSS' | 'SCORE' }
+  const tabs = [
+    ["users", "Manajemen Akun"],
+    ["classes", "Kelas & Guru"],
+    ["students", "Data Siswa"],
+    ["settings", "Pengaturan"],
+  ];
+  return (
+    <div>
+      <h2 className="text-2xl font-bold mb-6">Super Admin Dashboard</h2>
+      <div className="flex flex-wrap gap-2 mb-6">
+        {tabs.map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className={`glass-btn admin-tab-btn ${
+              tab === id ? "glass-btn-primary" : ""
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-  const collectionName = isBidang ? "subject_attendance" : "attendance";
-  const allAvailableClasses = useMemo(
-    () => Object.values(JENJANG_DATA).flat(),
+      {tab === "users" && (
+        <div className="glass-panel overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-black/10 dark:border-white/10 opacity-80">
+              <tr>
+                <th className="p-3">Nama</th>
+                <th className="p-3">Email</th>
+                <th className="p-3">Role</th>
+                <th className="p-3">Status</th>
+                <th className="p-3">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              {state.users.map((u) => (
+                <tr
+                  key={u.id}
+                  className="border-b border-black/5 dark:border-white/5"
+                >
+                  <td className="p-3 font-medium">{u.name}</td>
+                  <td className="p-3 text-xs">{u.email}</td>
+                  <td className="p-3 text-xs">
+                    {String(u.role || "").replace("_", " ")}
+                  </td>
+                  <td className="p-3">
+                    <span
+                      className={`status-badge ${
+                        u.status === "approved"
+                          ? "status-done"
+                          : "status-pending"
+                      }`}
+                    >
+                      {u.status}
+                    </span>
+                  </td>
+                  <td className="p-3">
+                    {u.status === "pending" && (
+                      <button
+                        onClick={() => approveUser(u.id)}
+                        className="text-blue-500 text-xs"
+                      >
+                        Setujui
+                      </button>
+                    )}
+                    <button
+                      onClick={() => deleteUser(u.id)}
+                      className="text-red-500 text-xs ml-3"
+                    >
+                      Hapus
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === "classes" && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="glass-panel p-6">
+            <h3 className="font-bold mb-4">Tambah Kelas</h3>
+            <form onSubmit={addClass} className="space-y-4">
+              <div>
+                <label className="block text-sm mb-1 opacity-80">
+                  Nama Kelas
+                </label>
+                <input
+                  className="glass-input"
+                  placeholder="Contoh: 1A SD"
+                  required
+                  value={className}
+                  onChange={(e) => setClassName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-sm mb-1 opacity-80">
+                  Wali Kelas
+                </label>
+                <select
+                  className="glass-input"
+                  value={teacherId}
+                  onChange={(e) => setTeacherId(e.target.value)}
+                >
+                  <option value="">Pilih Guru...</option>
+                  {teachers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="submit"
+                className="glass-btn glass-btn-primary w-full"
+              >
+                Simpan Kelas
+              </button>
+            </form>
+          </div>
+          <div className="md:col-span-2 glass-panel p-0 overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-black/10 dark:border-white/10 opacity-80">
+                <tr>
+                  <th className="p-4">Nama Kelas</th>
+                  <th className="p-4">Wali Kelas</th>
+                  <th className="p-4">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {state.classes.map((c) => {
+                  const teacher = state.users.find(
+                    (u) => u.id === c.homeroomTeacherId
+                  );
+                  return (
+                    <tr
+                      key={c.id}
+                      className="border-b border-black/5 dark:border-white/5"
+                    >
+                      <td className="p-4 font-bold">{c.name}</td>
+                      <td className="p-4 opacity-80">{teacher?.name || "-"}</td>
+                      <td className="p-4">
+                        <button
+                          onClick={() => deleteClass(c.id)}
+                          className="text-red-500 text-xs"
+                        >
+                          Hapus
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {tab === "students" && (
+        <div className="space-y-6">
+          <div className="glass-panel p-6">
+            <h3 className="font-bold mb-4">Import Data Siswa</h3>
+            <p className="text-sm opacity-70 mb-4">
+              Paste data dari Excel. Format:{" "}
+              <b>NIS, NISN, Nama Lengkap, Panggilan, L/P</b>.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <div>
+                <label className="block text-sm mb-1 opacity-80">
+                  Pilih Kelas
+                </label>
+                <select
+                  className="glass-input"
+                  value={importClassId}
+                  onChange={(e) => setImportClassId(e.target.value)}
+                >
+                  {state.classes.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <textarea
+              rows="6"
+              className="glass-input font-mono text-xs w-full mb-4"
+              placeholder="1234, 001234, Ahmad Budi, Budi, L\n..."
+              value={importText}
+              onChange={(e) => setImportText(e.target.value)}
+            />
+            <button
+              onClick={processImport}
+              className="glass-btn glass-btn-primary"
+            >
+              <Icon name="upload" /> Proses Import
+            </button>
+          </div>
+          <div className="glass-panel p-4">
+            <h4 className="font-bold mb-2">
+              Total Siswa: {state.students.length}
+            </h4>
+            <div className="text-xs opacity-70">
+              Data siswa akan tampil berdasarkan kelas saat di menu absensi.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === "settings" && (
+        <div className="glass-panel p-6">
+          <h3 className="font-bold mb-4">Pengaturan Global</h3>
+          <div className="max-w-md space-y-4">
+            <div>
+              <label className="block text-sm mb-1 opacity-80">
+                Tahun Ajaran
+              </label>
+              <input
+                className="glass-input"
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-sm mb-1 opacity-80">
+                Nama Kepala Sekolah
+              </label>
+              <input
+                className="glass-input"
+                value={principal}
+                onChange={(e) => setPrincipal(e.target.value)}
+              />
+            </div>
+            <button
+              onClick={saveSettings}
+              className="glass-btn glass-btn-primary mt-4"
+            >
+              Simpan Perubahan
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Navigation({
+  state,
+  currentView,
+  setCurrentView,
+  toggleTheme,
+  theme,
+  logout,
+}) {
+  const role = state.userProfile?.role;
+  const canPrint = ["admin", "guru_kelas", "guru_mapel"].includes(role);
+  const canAttendance = ["admin", "guru_kelas"].includes(role);
+  const canGrades = ["admin", "guru_kelas", "guru_mapel"].includes(role);
+  const items = [
+    { id: "dashboard", icon: "squares-four", label: "Dashboard", show: true },
+    { id: "print", icon: "printer", label: "Pengajuan Print", show: canPrint },
+    {
+      id: "attendance",
+      icon: "calendar-check",
+      label: "Absensi",
+      show: canAttendance,
+    },
+    { id: "grades", icon: "exam", label: "Nilai", show: canGrades },
+    { id: "leave", icon: "sign-out", label: "Izin Keluar", show: true },
+    {
+      id: "admin",
+      icon: "shield-star",
+      label: "Super Admin",
+      show: role === "admin",
+    },
+  ];
+  return (
+    <nav className="glass-panel rounded-none md:w-64 flex-shrink-0 flex flex-row md:flex-col justify-between md:justify-start fixed md:relative bottom-0 md:bottom-auto w-full z-40 border-t md:border-t-0 md:border-r border-white/20 h-16 md:h-full p-2 md:p-4">
+      <div className="hidden md:flex items-center gap-3 mb-8 px-2 mt-4">
+        <div className="w-10 h-10 bg-white/90 rounded-xl flex items-center justify-center shadow-sm">
+          <Icon name="student" fill className="text-2xl text-blue-600" />
+        </div>
+        <div>
+          <h2 className="font-bold text-lg leading-tight">Portal IGS</h2>
+          <p className="text-xs opacity-70">PAUD-SD-SMP</p>
+        </div>
+      </div>
+      <div className="flex flex-row md:flex-col w-full justify-around md:justify-start gap-1 md:gap-2 overflow-x-auto md:overflow-visible">
+        {items
+          .filter((i) => i.show)
+          .map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setCurrentView(item.id)}
+              className={`nav-btn flex md:w-full items-center gap-3 p-3 rounded-xl transition-all hover:bg-white/20 ${
+                currentView === item.id ? "active-nav" : ""
+              }`}
+            >
+              <Icon name={item.icon} className="text-xl" />
+              <span className="hidden md:inline font-medium">{item.label}</span>
+            </button>
+          ))}
+      </div>
+      <div className="hidden md:flex flex-col mt-auto gap-4">
+        <button
+          onClick={toggleTheme}
+          className="flex items-center gap-3 p-3 rounded-xl transition-all hover:bg-white/20 w-full text-left"
+        >
+          <Icon name={theme === "dark" ? "sun" : "moon"} className="text-xl" />
+          <span className="font-medium">Mode Tampilan</span>
+        </button>
+        <button
+          onClick={logout}
+          className="glass-panel p-3 flex items-center gap-3 text-left hover:bg-white/10 transition"
+        >
+          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold">
+            {state.userProfile?.name?.charAt(0)?.toUpperCase() || "U"}
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <p className="text-sm font-bold truncate">
+              {state.userProfile?.name || "User Name"}
+            </p>
+            <p className="text-xs opacity-70 truncate capitalize">
+              {ROLES[role] || role}
+            </p>
+          </div>
+          <Icon name="sign-out" className="text-red-500" />
+        </button>
+      </div>
+    </nav>
+  );
+}
+
+function MainLayout({
+  state,
+  currentView,
+  setCurrentView,
+  toggleTheme,
+  theme,
+  logout,
+  children,
+}) {
+  return (
+    <div className="h-screen w-full flex flex-col md:flex-row">
+      <Navigation
+        state={state}
+        currentView={currentView}
+        setCurrentView={setCurrentView}
+        toggleTheme={toggleTheme}
+        theme={theme}
+        logout={logout}
+      />
+      <main className="flex-1 overflow-y-auto pb-20 md:pb-0 p-4 md:p-8 relative">
+        <div className="md:hidden flex justify-between items-center mb-6 glass-panel p-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">
+              {state.userProfile?.name?.charAt(0)?.toUpperCase() || "U"}
+            </div>
+            <div className="leading-tight">
+              <p className="text-sm font-bold truncate max-w-[120px]">
+                {state.userProfile?.name || "User"}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-lg hover:bg-white/20"
+            >
+              <Icon name={theme === "dark" ? "sun" : "moon"} />
+            </button>
+            <button
+              onClick={logout}
+              className="p-2 rounded-lg hover:bg-red-500/20 text-red-500"
+            >
+              <Icon name="sign-out" />
+            </button>
+          </div>
+        </div>
+        <div className="max-w-6xl mx-auto space-y-6">{children}</div>
+      </main>
+    </div>
+  );
+}
+
+export default function App() {
+  const [state, setState] = useState(emptyState);
+  const [currentView, setCurrentView] = useState("dashboard");
+  const [loading, setLoading] = useState(true);
+  const [alert, setAlert] = useState({ open: false, title: "", message: "" });
+  const [theme, setTheme] = useState(
+    () => localStorage.getItem("igs-theme") || "light"
+  );
+  const [authReady, setAuthReady] = useState(false);
+
+  const showAlert = useCallback(
+    (title, message) => setAlert({ open: true, title, message }),
+    []
+  );
+  const closeAlert = useCallback(
+    () => setAlert((a) => ({ ...a, open: false })),
     []
   );
 
   useEffect(() => {
-    if (!selectedClass) return;
-    const qS = query(
-      collection(db, "artifacts", appId, "students"),
-      where("className", "==", selectedClass)
-    );
-    const unsubStudents = onSnapshot(
-      qS,
-      (s) => {
-        setStudents(
-          s.docs
-            .map((d) => ({ id: d.id, ...d.data() }))
-            .sort((a, b) => a.name.localeCompare(b.name))
-        );
-      },
-      (e) => showToast("Gagal memuat data siswa.", "error")
-    );
-
-    let qA = query(
-      collection(db, "artifacts", appId, collectionName),
-      where("date", "==", date),
-      where("className", "==", selectedClass)
-    );
-    if (isBidang) qA = query(qA, where("mapel", "==", userData.mapel));
-
-    const unsubAttend = onSnapshot(
-      qA,
-      (s) => {
-        const data = {};
-        // Simpan keseluruhan object data absensi untuk mendukung nilai & keterlambatan
-        s.docs.forEach((d) => {
-          data[d.data().studentId] = d.data();
-        });
-        setAttendance(data);
-      },
-      (e) => console.error(e)
-    );
-
-    return () => {
-      unsubStudents();
-      unsubAttend();
-    };
-  }, [date, selectedClass, userData.mapel, collectionName, isBidang]);
-
-  const updateData = async (studentId, dataToMerge) => {
-    const docId = isBidang
-      ? `${date}_${selectedClass}_${userData.mapel}_${studentId}`
-      : `${date}_${selectedClass}_${studentId}`;
-    try {
-      const payload = {
-        studentId,
-        date,
-        className: selectedClass,
-        teacher: userData.name,
-        timestamp: new Date().getTime(),
-        ...dataToMerge,
-      };
-      if (isBidang) payload.mapel = userData.mapel;
-
-      // Menggunakan merge: true agar update Nilai tidak mereset Status, dan sebaliknya
-      await setDoc(
-        doc(db, "artifacts", appId, collectionName, docId),
-        payload,
-        { merge: true }
-      );
-    } catch (e) {
-      console.error(e);
-    }
-    setOverlay(null);
-  };
-
-  return (
-    <div className="space-y-6">
-      <div
-        className={`${UI.CARD} p-8 border-none flex flex-col md:flex-row gap-4 justify-between items-center bg-slate-50/50`}
-      >
-        <div className="flex items-center gap-4 w-full md:w-auto">
-          <div
-            className={`w-12 h-12 bg-white ${
-              isBidang ? "text-emerald-600" : "text-indigo-600"
-            } rounded-2xl flex items-center justify-center shadow-sm`}
-          >
-            {isBidang ? <BookOpen size={24} /> : <ClipboardCheck size={24} />}
-          </div>
-          <div className="flex-1">
-            <div className="font-black text-indigo-950 uppercase text-[10px] opacity-40 leading-none mb-1">
-              {isBidang ? `ABSENSI MAPEL: ${userData.mapel}` : "ABSENSI HARIAN"}
-            </div>
-            {isBidang || isAdmin ? (
-              <select
-                className="bg-transparent font-black text-indigo-950 uppercase text-sm outline-none border-b-2 border-indigo-100 max-w-[200px]"
-                value={selectedClass}
-                onChange={(e) => setSelectedClass(e.target.value)}
-              >
-                {allAvailableClasses.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <div className="font-black text-indigo-950 uppercase text-sm">
-                {selectedClass}
-              </div>
-            )}
-          </div>
-        </div>
-        <input
-          type="date"
-          className={UI.INPUT + " md:w-56 bg-white shadow-sm border-none"}
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {students.length === 0 && (
-          <div className="col-span-full py-20 text-center bg-white rounded-[2.5rem] border border-dashed border-slate-200">
-            <Users size={48} className="mx-auto text-slate-200 mb-4" />
-            <p className="text-slate-400 font-black uppercase text-xs tracking-widest">
-              Belum ada siswa di kelas {selectedClass}
-            </p>
-          </div>
-        )}
-        {students.map((s) => {
-          const attData = attendance[s.id] || {};
-          const stat = attData.status;
-          const score = attData.score;
-          const lateMins = attData.lateMinutes;
-
-          let statusText = "BELUM ABSEN";
-          let statusColor = "text-slate-400";
-          if (stat === "H") {
-            statusText = "HADIR";
-            statusColor = "text-emerald-600";
-          } else if (stat === "T") {
-            statusText = `TELAT (${lateMins || 0}m)`;
-            statusColor = "text-amber-500";
-          } else if (stat === "S") {
-            statusText = "SAKIT";
-            statusColor = "text-indigo-500";
-          } else if (stat === "I") {
-            statusText = "IZIN";
-            statusColor = "text-indigo-500";
-          } else if (stat === "A") {
-            statusText = "ALPA";
-            statusColor = "text-rose-600";
-          }
-
-          return (
-            <div
-              key={s.id}
-              className={`${UI.CARD} p-4 md:p-6 border-none flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4 relative overflow-visible`}
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-2xl shrink-0">
-                  {s.gender === "L" ? "👳" : "🧕"}
-                </div>
-                <div>
-                  <p className="font-black text-indigo-950 text-[10px] md:text-xs uppercase truncate max-w-[150px]">
-                    {s.name}
-                  </p>
-                  <div className="flex items-center gap-2 mt-1">
-                    <p
-                      className={`text-[9px] font-black uppercase tracking-wider ${statusColor}`}
-                    >
-                      {statusText}
-                    </p>
-                    {score != null && (
-                      <span className="text-[8px] font-black bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-md">
-                        NILAI: {score}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* 3 MODE ACTIONS */}
-              <div className="flex items-center gap-2 w-full xl:w-auto bg-slate-50/50 p-2 rounded-2xl">
-                {/* Mode 1: Checklist (H / T) */}
-                <div className="flex bg-white shadow-sm border border-slate-100 rounded-xl overflow-hidden shrink-0">
-                  <button
-                    onClick={() =>
-                      updateData(s.id, { status: "H", lateMinutes: null })
-                    }
-                    className={`w-10 h-10 flex items-center justify-center transition-all ${
-                      stat === "H"
-                        ? "bg-emerald-500 text-white"
-                        : "text-slate-300 hover:bg-slate-50"
-                    }`}
-                  >
-                    <Check size={18} />
-                  </button>
-                  <div className="w-[1px] bg-slate-100"></div>
-                  <button
-                    onClick={() =>
-                      setOverlay(
-                        overlay?.id === s.id && overlay.type === "LATE"
-                          ? null
-                          : { id: s.id, type: "LATE" }
-                      )
-                    }
-                    className={`w-10 h-10 flex items-center justify-center font-black text-[12px] transition-all ${
-                      stat === "T"
-                        ? "bg-amber-500 text-white"
-                        : "text-slate-400 hover:bg-slate-50"
-                    }`}
-                  >
-                    T
-                  </button>
-                </div>
-
-                {/* Mode 2: Cross (S/I/A) */}
-                <div className="relative shrink-0">
-                  <button
-                    onClick={() =>
-                      setOverlay(
-                        overlay?.id === s.id && overlay.type === "CROSS"
-                          ? null
-                          : { id: s.id, type: "CROSS" }
-                      )
-                    }
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border border-slate-100 transition-all ${
-                      ["S", "I", "A"].includes(stat)
-                        ? "bg-rose-500 text-white border-rose-500"
-                        : "bg-white text-slate-300 hover:bg-slate-50"
-                    }`}
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-
-                {/* Mode 3: Nilai */}
-                <div className="relative shrink-0 ml-auto xl:ml-0">
-                  <button
-                    onClick={() =>
-                      setOverlay(
-                        overlay?.id === s.id && overlay.type === "SCORE"
-                          ? null
-                          : { id: s.id, type: "SCORE" }
-                      )
-                    }
-                    className={`h-10 px-4 rounded-xl flex items-center justify-center font-black text-[10px] shadow-sm border border-slate-100 transition-all ${
-                      score != null
-                        ? "bg-indigo-600 text-white border-indigo-600"
-                        : "bg-white text-slate-400 hover:bg-slate-50"
-                    }`}
-                  >
-                    {score != null ? score : "NILAI"}
-                  </button>
-                </div>
-
-                {/* POPUP OVERLAYS */}
-                {overlay?.id === s.id && (
-                  <div className="absolute top-full mt-2 right-4 xl:right-0 bg-white p-3 rounded-2xl shadow-2xl border border-slate-100 z-50 animate-in slide-in-from-top-2">
-                    {overlay.type === "LATE" && (
-                      <div className="flex gap-2 items-center">
-                        <Clock size={16} className="text-amber-500" />
-                        <input
-                          id={`late-${s.id}`}
-                          type="number"
-                          placeholder="Menit..."
-                          className={
-                            UI.INPUT + " w-24 p-2 text-center text-xs h-10"
-                          }
-                          defaultValue={lateMins || ""}
-                          autoFocus
-                        />
-                        <button
-                          onClick={() => {
-                            const val = document.getElementById(
-                              `late-${s.id}`
-                            ).value;
-                            updateData(s.id, {
-                              status: "T",
-                              lateMinutes: parseInt(val) || 0,
-                            });
-                          }}
-                          className="h-10 bg-amber-500 text-white rounded-xl px-4 font-black text-[10px] uppercase"
-                        >
-                          Simpan
-                        </button>
-                      </div>
-                    )}
-                    {overlay.type === "CROSS" && (
-                      <div className="flex gap-2">
-                        {["S", "I", "A"].map((val) => (
-                          <button
-                            key={val}
-                            onClick={() =>
-                              updateData(s.id, {
-                                status: val,
-                                lateMinutes: null,
-                              })
-                            }
-                            className="w-10 h-10 rounded-xl font-black bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white transition-all"
-                          >
-                            {val}
-                          </button>
-                        ))}
-                        <div className="w-[1px] bg-slate-100 mx-1"></div>
-                        <button
-                          onClick={() =>
-                            updateData(s.id, {
-                              status: null,
-                              lateMinutes: null,
-                            })
-                          }
-                          className="w-10 h-10 rounded-xl font-black bg-slate-50 text-slate-400 hover:bg-slate-200 transition-all flex items-center justify-center"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    )}
-                    {overlay.type === "SCORE" && (
-                      <div className="flex gap-2 items-center">
-                        <Star size={16} className="text-indigo-500" />
-                        <input
-                          id={`score-${s.id}`}
-                          type="number"
-                          min="0"
-                          max="100"
-                          placeholder="0-100"
-                          className={
-                            UI.INPUT + " w-24 p-2 text-center text-xs h-10"
-                          }
-                          defaultValue={score ?? ""}
-                          autoFocus
-                        />
-                        <button
-                          onClick={() => {
-                            const val = document.getElementById(
-                              `score-${s.id}`
-                            ).value;
-                            updateData(s.id, {
-                              score: val === "" ? null : parseInt(val),
-                            });
-                          }}
-                          className="h-10 bg-indigo-600 text-white rounded-xl px-4 font-black text-[10px] uppercase"
-                        >
-                          Simpan
-                        </button>
-                        {score != null && (
-                          <button
-                            onClick={() => updateData(s.id, { score: null })}
-                            className="h-10 bg-rose-50 text-rose-500 rounded-xl px-3 flex items-center justify-center hover:bg-rose-500 hover:text-white transition-all"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function AdminDatabase({ showToast }) {
-  const [activeTab, setActiveTab] = useState("list");
-  const [bulkData, setBulkData] = useState("");
-  const [students, setStudents] = useState([]);
-  const [filterJenjang, setFilterJenjang] = useState("ALL");
-  const [filterClass, setFilterClass] = useState("ALL");
-  const [importClass, setImportClass] = useState("1 AL QALAM");
+    document.documentElement.classList.toggle("dark", theme === "dark");
+    document.documentElement.classList.toggle("light", theme !== "dark");
+    localStorage.setItem("igs-theme", theme);
+  }, [theme]);
 
   useEffect(() => {
-    const unsub = onSnapshot(
-      collection(db, "artifacts", appId, "students"),
-      (s) => {
-        setStudents(
-          s.docs
-            .map((d) => ({ id: d.id, ...d.data() }))
-            .sort((a, b) => a.name.localeCompare(b.name))
-        );
-      },
-      (e) => console.error(e)
-    );
-    return () => unsub();
-  }, []);
-
-  const filteredStudents = useMemo(() => {
-    return students.filter((s) => {
-      const matchJenjang =
-        filterJenjang === "ALL" ||
-        Object.keys(JENJANG_DATA).find((k) =>
-          JENJANG_DATA[k].includes(s.className)
-        ) === filterJenjang;
-      const matchClass = filterClass === "ALL" || s.className === filterClass;
-      return matchJenjang && matchClass;
-    });
-  }, [students, filterJenjang, filterClass]);
-
-  const handleBulkImport = async () => {
-    const batch = writeBatch(db);
-    const lines = bulkData.split("\n");
-    let count = 0;
-    lines.forEach((line) => {
-      const p = line.split("\t");
-      if (p.length >= 3) {
-        count++;
-        batch.set(doc(collection(db, "artifacts", appId, "students")), {
-          nis: p[0]?.trim() || "",
-          nisn: p[1]?.trim() || "",
-          name: p[2]?.trim().toUpperCase(),
-          nickname: p[3]?.trim() || "",
-          gender: p[4]?.trim().toUpperCase() === "L" ? "L" : "P",
-          className: importClass,
-        });
-      }
-    });
-    if (count > 0) {
-      await batch.commit();
-      setBulkData("");
-      showToast(`Import ${count} Siswa Berhasil!`);
-      setActiveTab("list");
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap gap-3">
-        <button
-          onClick={() => setActiveTab("list")}
-          className={`px-6 py-4 rounded-xl font-black text-[10px] uppercase ${
-            activeTab === "list"
-              ? "bg-indigo-600 text-white shadow-lg"
-              : "bg-white text-slate-400"
-          }`}
-        >
-          Daftar Siswa
-        </button>
-        <button
-          onClick={() => setActiveTab("import")}
-          className={`px-6 py-4 rounded-xl font-black text-[10px] uppercase ${
-            activeTab === "import"
-              ? "bg-indigo-600 text-white shadow-lg"
-              : "bg-white text-slate-400"
-          }`}
-        >
-          Import Massal
-        </button>
-      </div>
-      {activeTab === "list" ? (
-        <div className="space-y-6">
-          <div
-            className={`${UI.CARD} p-6 border-none grid grid-cols-1 md:grid-cols-3 gap-4`}
-          >
-            <div>
-              <label className="text-[9px] font-black text-slate-400 uppercase mb-2 block">
-                Filter Jenjang
-              </label>
-              <select
-                className={UI.INPUT}
-                value={filterJenjang}
-                onChange={(e) => {
-                  setFilterJenjang(e.target.value);
-                  setFilterClass("ALL");
-                }}
-              >
-                <option value="ALL">SEMUA JENJANG</option>
-                {Object.keys(JENJANG_DATA).map((j) => (
-                  <option key={j} value={j}>
-                    {j}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-[9px] font-black text-slate-400 uppercase mb-2 block">
-                Filter Kelas
-              </label>
-              <select
-                className={UI.INPUT}
-                value={filterClass}
-                onChange={(e) => setFilterClass(e.target.value)}
-              >
-                <option value="ALL">SEMUA KELAS</option>
-                {(
-                  JENJANG_DATA[filterJenjang] ||
-                  Object.values(JENJANG_DATA).flat()
-                ).map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-end">
-              <div className="p-4 bg-indigo-50 rounded-2xl w-full text-center">
-                <p className="text-[9px] font-black text-indigo-600 uppercase">
-                  Total Terfilter
-                </p>
-                <p className="text-xl font-black text-indigo-950">
-                  {filteredStudents.length} Siswa
-                </p>
-              </div>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredStudents.map((s) => (
-              <div
-                key={s.id}
-                className={`${UI.CARD} p-6 flex justify-between items-center group border-none`}
-              >
-                <div>
-                  <p className="font-black text-[10px] uppercase text-indigo-950">
-                    {s.name}
-                  </p>
-                  <p className="text-[8px] font-bold text-slate-400 uppercase">
-                    {s.className} • {s.gender}
-                  </p>
-                </div>
-                <button
-                  onClick={() =>
-                    deleteDoc(doc(db, "artifacts", appId, "students", s.id))
-                  }
-                  className="text-rose-300 opacity-0 group-hover:opacity-100 hover:text-rose-600 transition-all p-2 bg-rose-50 rounded-lg"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className={`${UI.CARD} p-10 border-none`}>
-          <div className="mb-6">
-            <label className="text-[10px] font-black text-slate-400 uppercase mb-2 block">
-              Kelas Tujuan Import
-            </label>
-            <select
-              className={UI.INPUT}
-              value={importClass}
-              onChange={(e) => setImportClass(e.target.value)}
-            >
-              {Object.values(JENJANG_DATA)
-                .flat()
-                .map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-            </select>
-          </div>
-          <textarea
-            className={UI.INPUT + " h-64 mb-4 font-mono text-[10px]"}
-            placeholder="NIS [TAB] NISN [TAB] NAMA LENGKAP [TAB] PANGGILAN [TAB] GENDER(L/P)"
-            value={bulkData}
-            onChange={(e) => setBulkData(e.target.value)}
-          />
-          <button onClick={handleBulkImport} className={UI.BTN_PRIMARY}>
-            SIMPAN KE DATABASE
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ReportPanel({ userData, showToast, libsReady }) {
-  const isAdmin = userData.role === "admin";
-  const isBidang = userData.role === "bidang";
-  const isWali = userData.role === "wali";
-
-  // State dasar
-  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-  const [selectedTA, setSelectedTA] = useState("2024-2025");
-  const [reportCategory, setReportCategory] = useState("attendance"); // Tambahan state kategori report
-  const [isGenerating, setIsGenerating] = useState(false);
-
-  // State Khusus Admin
-  const [adminReportType, setAdminReportType] = useState("wali"); // 'wali' atau 'bidang'
-  const [availableSubjectList, setAvailableSubjectList] = useState([]); // List mapel yang sudah ada di DB
-  const [adminSelectedSubject, setAdminSelectedSubject] = useState("");
-  const [adminSelectedJenjang, setAdminSelectedJenjang] = useState("SD");
-
-  // State Pilihan Kelas
-  const [selectedClass, setSelectedClass] = useState(() => {
-    if (isAdmin) return JENJANG_DATA["SD"][0];
-    return userData.className;
-  });
-
-  // Efek Ambil Data Mapel Unik (Hanya untuk Admin)
-  useEffect(() => {
-    if (isAdmin && adminReportType === "bidang") {
-      const unsub = onSnapshot(
-        collection(db, "artifacts", appId, "users"),
-        (snap) => {
-          const subjects = new Set();
-          snap.docs.forEach((d) => {
-            const u = d.data();
-            if (u.role === "bidang" && u.mapel) subjects.add(u.mapel);
-          });
-          const list = Array.from(subjects).sort();
-          setAvailableSubjectList(list);
-          if (list.length > 0 && !adminSelectedSubject)
-            setAdminSelectedSubject(list[0]);
-        }
-      );
-      return () => unsub();
-    }
-  }, [isAdmin, adminReportType]);
-
-  // Daftar Kelas yang Tersedia Berdasarkan Aturan Baru
-  const classesForDropdown = useMemo(() => {
-    if (isWali) return [userData.className];
-    if (isBidang) return JENJANG_DATA[userData.jenjang] || [];
-    if (isAdmin) return JENJANG_DATA[adminSelectedJenjang] || [];
-    return [];
-  }, [userData, isWali, isBidang, isAdmin, adminSelectedJenjang]);
-
-  // Fungsi PDF Generator (Inti Tetap Sama agar stabil)
-  const getBase64Image = (url) => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.setAttribute("crossOrigin", "anonymous");
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL("image/png"));
-      };
-      img.onerror = reject;
-      img.src = url;
-    });
-  };
-
-  const generatePDF = async () => {
-    const jspdfLib = window.jspdf || (window.window && window.window.jspdf);
-    if (!jspdfLib) {
-      showToast("Gagal memuat pustaka PDF.", "error");
+    if (!firebaseReady || !auth || !db) {
+      setLoading(false);
+      setAuthReady(true);
       return;
     }
-
-    setIsGenerating(true);
-    try {
-      const { jsPDF } = jspdfLib;
-      const doc = new jsPDF({
-        orientation: "landscape",
-        unit: "mm",
-        format: [215, 330],
-      });
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
-
-      const sq = query(
-        collection(db, "artifacts", appId, "students"),
-        where("className", "==", selectedClass)
-      );
-      const sSnap = await getDocs(sq);
-      const studentList = sSnap.docs
-        .map((d) => ({ id: d.id, ...d.data() }))
-        .sort((a, b) => a.name.localeCompare(b.name));
-
-      if (studentList.length === 0) {
-        showToast("Daftar siswa kosong untuk kelas " + selectedClass, "error");
-        setIsGenerating(false);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setLoading(true);
+      if (!user) {
+        setState((s) => ({ ...s, user: null, userProfile: null }));
+        setLoading(false);
+        setAuthReady(true);
         return;
       }
-
-      const yearBase = parseInt(selectedTA.split("-")[0]);
-      const actualYear = selectedMonth >= 6 ? yearBase : yearBase + 1;
-      const daysInMonth = new Date(actualYear, selectedMonth + 1, 0).getDate();
-      const semester = selectedMonth >= 6 ? "GANJIL" : "GENAP";
-      const datePrefix = `${actualYear}-${String(selectedMonth + 1).padStart(
-        2,
-        "0"
-      )}`;
-
-      // Logika Penentuan Tipe Laporan & Mapel
-      const isReportBidang = isAdmin ? adminReportType === "bidang" : isBidang;
-      const displaySubject = isReportBidang
-        ? isAdmin
-          ? adminSelectedSubject
-          : userData.mapel
-        : "Wali Kelas";
-      const collName = isReportBidang ? "subject_attendance" : "attendance";
-
-      let aq = query(
-        collection(db, "artifacts", appId, collName),
-        where("className", "==", selectedClass)
-      );
-      if (isReportBidang) aq = query(aq, where("mapel", "==", displaySubject));
-
-      const aSnap = await getDocs(aq);
-      const attMap = {};
-      aSnap.docs.forEach((d) => {
-        const data = d.data();
-        if (data.date.startsWith(datePrefix)) {
-          const dayNum = parseInt(data.date.split("-")[2]);
-          if (!attMap[data.studentId]) attMap[data.studentId] = {};
-          attMap[data.studentId][dayNum] = {
-            status: data.status,
-            score: data.score,
-            lateMinutes: data.lateMinutes,
-          };
-        }
-      });
-
-      // Layouting PDF
-      let startY = 10;
       try {
-        const logoBase = await getBase64Image(LOGO_URL);
-        doc.addImage(logoBase, "PNG", (pageWidth - 14) / 2, startY, 14, 14);
-        startY += 16;
-      } catch (err) {}
-
-      let currentJenjang = "SD";
-      if (JENJANG_DATA["PAUD"].includes(selectedClass)) currentJenjang = "PAUD";
-      if (JENJANG_DATA["SMP"].includes(selectedClass)) currentJenjang = "SMP";
-
-      const schoolHeader =
-        currentJenjang === "PAUD"
-          ? "PAUD ISLAMIC GLOBAL PRESCHOOL"
-          : currentJenjang === "SMP"
-          ? "SMP ISLAMIC GLOBAL SCHOOL"
-          : "SD ISLAMIC GLOBAL SCHOOL";
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.text(schoolHeader, pageWidth / 2, startY + 3, { align: "center" });
-
-      doc.setFontSize(7.5);
-      doc.setFont("helvetica", "normal");
-      doc.text(
-        "Jl. Rambai No. 9 RT 7 Kelurahan Gunung Samarinda Baru, Balikpapan",
-        pageWidth / 2,
-        startY + 7.5,
-        { align: "center" }
-      );
-      doc.text(
-        "Email: admin@islamicglobalschool.sch.id | Website: www.islamicglobalschool.sch.id",
-        pageWidth / 2,
-        startY + 11,
-        { align: "center" }
-      );
-      doc.setLineWidth(0.4);
-      doc.line(15, startY + 14, pageWidth - 15, startY + 14);
-
-      const reportTitle =
-        reportCategory === "score"
-          ? "DAFTAR NILAI SISWA"
-          : "DAFTAR HADIR SISWA";
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
-      doc.text(reportTitle, pageWidth / 2, startY + 20, { align: "center" });
-      doc.text(`TAHUN AJARAN ${selectedTA}`, pageWidth / 2, startY + 24, {
-        align: "center",
-      });
-
-      doc.setFontSize(8);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Bidang Studi  : ${displaySubject}`, 15, startY + 30);
-      doc.text(`Semester        : ${semester}`, 15, startY + 34);
-      doc.text(`Kelas               : ${selectedClass}`, 15, startY + 38);
-      doc.text(
-        `Bulan : ${MONTHS[selectedMonth].toUpperCase()} ${actualYear}`,
-        pageWidth - 15,
-        startY + 30,
-        { align: "right" }
-      );
-
-      const formatLate = (mins) => {
-        if (!mins) return "T";
-        const m = parseInt(mins, 10);
-        if (isNaN(m)) return "T";
-        if (m >= 60) {
-          const h = Math.floor(m / 60);
-          const remaining = m % 60;
-          return remaining > 0 ? `${h}h${remaining}m` : `${h}h`;
-        }
-        return `${m}m`;
-      };
-
-      let head1, head2, body;
-
-      if (reportCategory === "score") {
-        head1 = [
-          { content: "NO", rowSpan: 2 },
-          { content: "NIS", rowSpan: 2 },
-          { content: "NISN", rowSpan: 2 },
-          { content: "NAMA SISWA", rowSpan: 2 },
-          { content: "CALL", rowSpan: 2 },
-          { content: "L/P", rowSpan: 2 },
-          { content: `TANGGAL`, colSpan: daysInMonth },
-          { content: "RATA-RATA", rowSpan: 2 },
-        ];
-        head2 = Array.from({ length: daysInMonth }, (_, i) =>
-          (i + 1).toString()
+        const profileSnap = await getDoc(
+          doc(db, getPublicPath("users"), user.uid)
         );
-
-        body = studentList.map((s, idx) => {
-          const sAtt = attMap[s.id] || {};
-          let sum = 0;
-          let count = 0;
-          const daily = Array.from({ length: daysInMonth }, (_, i) => {
-            const score = sAtt[i + 1]?.score;
-            if (score != null) {
-              sum += Number(score);
-              count++;
-            }
-            return score != null ? score : "";
-          });
-          const avg = count > 0 ? (sum / count).toFixed(1) : "-";
-          return [
-            idx + 1,
-            s.nis || "-",
-            s.nisn || "-",
-            s.name,
-            s.nickname || "-",
-            s.gender,
-            ...daily,
-            avg,
-          ];
-        });
-      } else {
-        head1 = [
-          { content: "NO", rowSpan: 2 },
-          { content: "NIS", rowSpan: 2 },
-          { content: "NISN", rowSpan: 2 },
-          { content: "NAMA SISWA", rowSpan: 2 },
-          { content: "CALL", rowSpan: 2 },
-          { content: "L/P", rowSpan: 2 },
-          { content: `TANGGAL`, colSpan: daysInMonth },
-          { content: "JUMLAH", colSpan: 4 },
-        ];
-        head2 = [
-          ...Array.from({ length: daysInMonth }, (_, i) => (i + 1).toString()),
-          "S",
-          "I",
-          "A",
-          "T",
-        ];
-
-        body = studentList.map((s, idx) => {
-          const sAtt = attMap[s.id] || {};
-          const c = { S: 0, I: 0, A: 0, T: 0 };
-          const daily = Array.from({ length: daysInMonth }, (_, i) => {
-            const data = sAtt[i + 1] || {};
-            const v = data.status;
-            if (v) {
-              if (c[v] !== undefined) c[v]++;
-            }
-            if (v === "H") return "v";
-            if (v === "T") return formatLate(data.lateMinutes);
-            return v || "";
-          });
-          return [
-            idx + 1,
-            s.nis || "-",
-            s.nisn || "-",
-            s.name,
-            s.nickname || "-",
-            s.gender,
-            ...daily,
-            c.S || "",
-            c.I || "",
-            c.A || "",
-            c.T || "",
-          ];
-        });
-      }
-
-      doc.autoTable({
-        head: [head1, head2],
-        body: body,
-        startY: startY + 43,
-        theme: "grid",
-        styles: {
-          fontSize: 4.5,
-          cellPadding: 0.7,
-          halign: "center",
-          textColor: 0,
-          lineColor: 0,
-          lineWidth: 0.05,
-        },
-        headStyles: {
-          fillColor: [255, 255, 255],
-          fontStyle: "bold",
-          textColor: 0,
-        },
-        columnStyles: {
-          3: { halign: "left", cellWidth: 42 },
-          4: { halign: "left", cellWidth: 15 },
-        },
-        didParseCell: function (data) {
-          if (
-            data.section === "body" &&
-            data.column.index >= 6 &&
-            data.column.index < 6 + daysInMonth
-          ) {
-            const dayNum = data.column.index - 5;
-            const d = new Date(actualYear, selectedMonth, dayNum);
-            if (d.getDay() === 0 || d.getDay() === 6)
-              data.cell.styles.fillColor = [220, 220, 220];
+        if (!profileSnap.exists()) {
+          setState((s) => ({ ...s, user, userProfile: null }));
+          await signOut(auth);
+        } else {
+          const profile = { id: profileSnap.id, ...profileSnap.data() };
+          if (profile.status !== "approved") {
+            showAlert(
+              "Menunggu Persetujuan",
+              "Akun Anda sedang menunggu persetujuan Admin."
+            );
+            await signOut(auth);
+          } else {
+            setState((s) => ({ ...s, user, userProfile: profile }));
+            setCurrentView("dashboard");
           }
-        },
-      });
-
-      let footerY = doc.lastAutoTable.finalY + 10;
-      if (footerY + 35 > pageHeight) {
-        doc.addPage();
-        footerY = 20;
+        }
+      } catch (error) {
+        console.error(error);
+        showAlert("Firebase Error", error.message);
+      } finally {
+        setLoading(false);
+        setAuthReady(true);
       }
-      const ttdInfo =
-        KEPALA_SEKOLAH[currentJenjang] || KEPALA_SEKOLAH["SYSTEM"];
-      doc.setFontSize(8.5);
-      doc.setFont("helvetica", "normal");
-      doc.text("Mengetahui,", 40, footerY);
-      doc.text(ttdInfo.jabatan, 40, footerY + 5);
-      doc.setFont("helvetica", "bold");
-      doc.text(ttdInfo.nama, 40, footerY + 28);
-      doc.setFont("helvetica", "normal");
-      doc.text(
-        `Balikpapan, ${daysInMonth} ${MONTHS[selectedMonth]} ${actualYear}`,
-        pageWidth - 90,
-        footerY
-      );
-      doc.text(
-        `Guru ${isReportBidang ? "Bidang" : "Kelas"},`,
-        pageWidth - 90,
-        footerY + 5
-      );
-      doc.setFont("helvetica", "bold");
-      doc.text(
-        isAdmin ? "ADMINISTRATOR" : userData.name,
-        pageWidth - 90,
-        footerY + 28
-      );
+    });
+    return () => unsubscribe();
+  }, [showAlert]);
 
-      const fileNamePrefix = reportCategory === "score" ? "NILAI" : "HADIR";
-      doc.save(
-        `REKAP_${fileNamePrefix}_${displaySubject}_${selectedClass}_${MONTHS[
-          selectedMonth
-        ].toUpperCase()}.pdf`
+  useEffect(() => {
+    if (!firebaseReady || !db || !state.userProfile) return undefined;
+    const cols = [
+      "users",
+      "classes",
+      "students",
+      "print_requests",
+      "leave_requests",
+      "settings",
+    ];
+    const unsubscribers = cols.map((colName) =>
+      onSnapshot(
+        query(collection(db, getPublicPath(colName))),
+        (snapshot) => {
+          const data = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+          setState((s) => {
+            const next = { ...s };
+            if (colName === "users") next.users = data;
+            if (colName === "classes") next.classes = data;
+            if (colName === "students") next.students = data;
+            if (colName === "print_requests") next.printRequests = data;
+            if (colName === "leave_requests") next.leaveRequests = data;
+            if (colName === "settings") {
+              const global = data.find((d) => d.id === "global");
+              if (global) next.settings = global;
+            }
+            return next;
+          });
+        },
+        (error) => console.error(`Error listening to ${colName}:`, error)
+      )
+    );
+    return () => unsubscribers.forEach((unsub) => unsub());
+  }, [state.userProfile]);
+
+  async function login(credentials) {
+    if (!firebaseReady || !auth)
+      return showAlert(
+        "Firebase Belum Diatur",
+        "Masukkan Firebase config Anda di App.jsx terlebih dahulu."
       );
-      showToast("Download Berhasil!");
-    } catch (e) {
-      showToast("Gagal generate PDF", "error");
-    } finally {
-      setIsGenerating(false);
+    setLoading(true);
+    try {
+      await signInWithEmailAndPassword(
+        auth,
+        credentials.email,
+        credentials.password
+      );
+    } catch (error) {
+      showAlert("Login Gagal", error.message);
+      setLoading(false);
     }
-  };
+  }
+
+  async function register(data) {
+    if (!firebaseReady || !auth || !db)
+      return showAlert(
+        "Firebase Belum Diatur",
+        "Masukkan Firebase config Anda di App.jsx terlebih dahulu."
+      );
+    setLoading(true);
+    try {
+      let assignedRole = data.role;
+      let status = "pending";
+      if (data.email === "miftahul@igs.sch.id") {
+        assignedRole = "admin";
+        status = "approved";
+      }
+      const cred = await createUserWithEmailAndPassword(
+        auth,
+        data.email,
+        data.password
+      );
+      await setDoc(doc(db, getPublicPath("users"), cred.user.uid), {
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        role: assignedRole,
+        status,
+        classes: [],
+        createdAt: new Date().toISOString(),
+      });
+      if (status === "pending") {
+        showAlert(
+          "Pendaftaran Berhasil",
+          "Akun Anda sedang menunggu persetujuan admin."
+        );
+        await signOut(auth);
+      } else showAlert("Sukses", "Akun Admin berhasil dibuat.");
+    } catch (error) {
+      showAlert("Pendaftaran Gagal", error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function logout() {
+    if (!auth) return;
+    setLoading(true);
+    try {
+      await signOut(auth);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function renderCurrentView() {
+    const common = { state, showAlert, setLoading };
+    if (currentView === "dashboard")
+      return <Dashboard profile={state.userProfile} />;
+    if (currentView === "print") return <PrintView {...common} />;
+    if (currentView === "attendance") return <AttendanceView {...common} />;
+    if (currentView === "grades") return <GradesView />;
+    if (currentView === "leave") return <LeaveView />;
+    if (currentView === "admin")
+      return state.userProfile?.role === "admin" ? (
+        <AdminView {...common} />
+      ) : (
+        <Dashboard profile={state.userProfile} />
+      );
+    return <Dashboard profile={state.userProfile} />;
+  }
 
   return (
-    <div className={`${UI.CARD} p-10 max-w-2xl mx-auto border-none`}>
-      <div className="flex items-center gap-4 mb-10">
-        <div className="w-14 h-14 bg-indigo-600 text-white rounded-[1.5rem] flex items-center justify-center shadow-xl shadow-indigo-100">
-          <FileText size={28} />
-        </div>
-        <div>
-          <h3 className="font-black text-indigo-950 uppercase text-lg">
-            Laporan PDF v1.0
-          </h3>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-            Mode:{" "}
-            {isAdmin ? "ADMINISTRATOR" : isWali ? "WALI KELAS" : "GURU BIDANG"}
-          </p>
-        </div>
-      </div>
-
-      <div className="space-y-5 mb-10">
-        {/* --- KHUSUS ADMIN: FILTER TIPE GURU & MAPEL --- */}
-        {isAdmin && (
-          <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 space-y-4 mb-6">
-            <div>
-              <label className="text-[9px] font-black text-slate-400 uppercase mb-2 block">
-                1. Pilih Tipe Guru
-              </label>
-              <div className="flex p-1 bg-white rounded-xl border border-slate-200">
-                <button
-                  onClick={() => setAdminReportType("wali")}
-                  className={`flex-1 py-3 rounded-lg text-[9px] font-black uppercase transition-all ${
-                    adminReportType === "wali"
-                      ? "bg-indigo-600 text-white shadow-md"
-                      : "text-slate-400"
-                  }`}
-                >
-                  Wali Kelas
-                </button>
-                <button
-                  onClick={() => setAdminReportType("bidang")}
-                  className={`flex-1 py-3 rounded-lg text-[9px] font-black uppercase transition-all ${
-                    adminReportType === "bidang"
-                      ? "bg-indigo-600 text-white shadow-md"
-                      : "text-slate-400"
-                  }`}
-                >
-                  Guru Bidang
-                </button>
-              </div>
-            </div>
-
-            {adminReportType === "bidang" && (
-              <div>
-                <label className="text-[9px] font-black text-slate-400 uppercase mb-2 block">
-                  2. Pilih Bidang Studi (Terdaftar)
-                </label>
-                <select
-                  className={UI.INPUT + " bg-white"}
-                  value={adminSelectedSubject}
-                  onChange={(e) => setAdminSelectedSubject(e.target.value)}
-                >
-                  {availableSubjectList.length === 0 ? (
-                    <option disabled>BELUM ADA DATA BIDANG</option>
-                  ) : (
-                    availableSubjectList.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))
-                  )}
-                </select>
-              </div>
-            )}
-
-            <div>
-              <label className="text-[9px] font-black text-slate-400 uppercase mb-2 block">
-                {adminReportType === "bidang" ? "3" : "2"}. Pilih Jenjang
-                Sekolah
-              </label>
-              <select
-                className={UI.INPUT + " bg-white"}
-                value={adminSelectedJenjang}
-                onChange={(e) => {
-                  setAdminSelectedJenjang(e.target.value);
-                  setSelectedClass(JENJANG_DATA[e.target.value][0]);
-                }}
-              >
-                {Object.keys(JENJANG_DATA).map((j) => (
-                  <option key={j} value={j}>
-                    {j}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-        )}
-
-        {/* --- INPUTAN UMUM (DENGAN LOGIKA PERAN) --- */}
-
-        {/* Step: Pilih Kelas */}
-        <div className="space-y-2">
-          <label className="text-[9px] font-black text-slate-400 uppercase">
-            {isAdmin
-              ? adminReportType === "bidang"
-                ? "4. Pilih Kelas"
-                : "3. Pilih Kelas"
-              : "1. Pilih Kelas"}
-          </label>
-          <select
-            className={UI.INPUT}
-            value={selectedClass}
-            onChange={(e) => setSelectedClass(e.target.value)}
-            disabled={isWali} // Wali kelas tidak bisa ganti kelas
-          >
-            {classesForDropdown.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          {isWali && (
-            <p className="text-[8px] font-bold text-indigo-500 uppercase px-2 italic">
-              * Terkunci sesuai wali kelas terdaftar
+    <div className="app-shell">
+      <ModalAlert alert={alert} onClose={closeAlert} />
+      <LoadingOverlay show={loading} />
+      {!authReady ? null : !firebaseReady ? (
+        <div className="min-h-screen flex items-center justify-center p-4">
+          <div className="glass-panel max-w-xl p-8">
+            <h1 className="text-2xl font-bold mb-2">
+              Firebase belum dikonfigurasi
+            </h1>
+            <p className="opacity-80">
+              Buka <b>App.jsx</b> lalu isi <b>FALLBACK_FIREBASE_CONFIG</b>{" "}
+              dengan konfigurasi Firebase lama Anda. Saya sengaja membuat error
+              ini terlihat jelas agar aplikasi tidak lagi buffering tanpa akhir.
             </p>
-          )}
-        </div>
-
-        {/* Step: Pilih Bulan */}
-        <div className="space-y-2">
-          <label className="text-[9px] font-black text-slate-400 uppercase">
-            {isAdmin
-              ? adminReportType === "bidang"
-                ? "5. Pilih Bulan"
-                : "4. Pilih Bulan"
-              : "2. Pilih Bulan"}
-          </label>
-          <select
-            className={UI.INPUT}
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-          >
-            {MONTHS.map((m, i) => (
-              <option key={m} value={i}>
-                {m}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {/* Step: Pilih TA */}
-        <div className="space-y-2">
-          <label className="text-[9px] font-black text-slate-400 uppercase">
-            {isAdmin
-              ? adminReportType === "bidang"
-                ? "6. Pilih Tahun Ajaran"
-                : "5. Pilih Tahun Ajaran"
-              : "3. Pilih Tahun Ajaran"}
-          </label>
-          <select
-            className={UI.INPUT}
-            value={selectedTA}
-            onChange={(e) => setSelectedTA(e.target.value)}
-          >
-            <option value="2024-2025">2024-2025</option>
-            <option value="2025-2026">2025-2026</option>
-          </select>
-        </div>
-
-        {/* Step: Pilih Kategori Laporan (Hadir / Nilai) */}
-        <div className="space-y-2">
-          <label className="text-[9px] font-black text-slate-400 uppercase">
-            {isAdmin
-              ? adminReportType === "bidang"
-                ? "7. Pilih Jenis Rekap"
-                : "6. Pilih Jenis Rekap"
-              : "4. Pilih Jenis Rekap"}
-          </label>
-          <div className="flex p-1 bg-white rounded-xl border border-slate-200">
-            <button
-              onClick={() => setReportCategory("attendance")}
-              className={`flex-1 py-3 rounded-lg text-[9px] font-black uppercase transition-all ${
-                reportCategory === "attendance"
-                  ? "bg-indigo-600 text-white shadow-md"
-                  : "text-slate-400 hover:bg-slate-50"
-              }`}
-            >
-              Rekap Kehadiran
-            </button>
-            <button
-              onClick={() => setReportCategory("score")}
-              className={`flex-1 py-3 rounded-lg text-[9px] font-black uppercase transition-all ${
-                reportCategory === "score"
-                  ? "bg-indigo-600 text-white shadow-md"
-                  : "text-slate-400 hover:bg-slate-50"
-              }`}
-            >
-              Rekap Nilai
-            </button>
           </div>
         </div>
-      </div>
-
-      <button
-        onClick={generatePDF}
-        disabled={
-          isGenerating ||
-          !libsReady ||
-          !selectedClass ||
-          (isAdmin && adminReportType === "bidang" && !adminSelectedSubject)
-        }
-        className={
-          UI.BTN_PRIMARY +
-          " py-6 text-sm flex items-center justify-center gap-3 disabled:bg-slate-100 disabled:text-slate-300"
-        }
-      >
-        {isGenerating ? (
-          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-        ) : (
-          <Download size={20} />
-        )}
-        {isGenerating
-          ? "MENGUNDUH..."
-          : `UNDUH REKAP ${reportCategory === "score" ? "NILAI" : "HADIR"} F4`}
-      </button>
-
-      {/* Info Tambahan */}
-      <div className="mt-8 flex gap-4 p-5 bg-indigo-50 rounded-2xl border border-indigo-100">
-        <Sparkles size={18} className="text-indigo-400 shrink-0" />
-        <div>
-          <p className="text-[9px] font-black text-indigo-950 uppercase mb-1">
-            Keterangan Laporan
-          </p>
-          <p className="text-[9px] font-medium text-indigo-600 uppercase leading-relaxed">
-            Laporan akan digenerate dengan ukuran kertas F4 (landscape). Nama
-            guru penandatangan akan otomatis menyesuaikan dengan akun yang login
-            atau pilihan Admin.
-          </p>
-        </div>
-      </div>
+      ) : !state.userProfile ? (
+        <AuthView onLogin={login} onRegister={register} loading={loading} />
+      ) : (
+        <MainLayout
+          state={state}
+          currentView={currentView}
+          setCurrentView={setCurrentView}
+          toggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+          theme={theme}
+          logout={logout}
+        >
+          {renderCurrentView()}
+        </MainLayout>
+      )}
     </div>
   );
 }
